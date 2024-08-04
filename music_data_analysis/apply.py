@@ -25,10 +25,11 @@ def process_task(song):
 def apply_to_dataset_multi_proc(
     dataset: Dataset, processor: Processor, num_processes: int
 ):
+    songs = dataset.songs()
     with multiprocessing.Pool(
         num_processes, initializer=process_init, initargs=(processor,)
     ) as p:
-        list(tqdm(p.imap(process_task, dataset.songs()), total=len(dataset.songs())))
+        list(tqdm(p.imap(process_task, songs), total=len(songs)))
 
 
 def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor):

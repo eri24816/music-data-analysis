@@ -5,6 +5,10 @@ from typing import Any
 from mido import MidiFile
 
 
+def exists(dataset_path: Path, song_name: str, prop_name: str) -> bool:
+    return len(list((dataset_path / prop_name).glob(f"{song_name}.*"))) > 0
+
+
 def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Path:
     return (dataset_path / prop_name).glob(f"{song_name}.*").__next__()
 
@@ -63,6 +67,9 @@ class Dataset:
     def get_song(self, song_name: str):
         return Song(self, song_name)
 
+    def exists(self, song_name: str, prop_name: str) -> bool:
+        return exists(self.dataset_path, song_name, prop_name)
+
     def get_old_file_path(self, song_name: str, prop_name: str) -> Path:
         return get_old_file_path(self.dataset_path, song_name, prop_name)
 
@@ -90,6 +97,9 @@ class Song:
     def __init__(self, dataset: Dataset, song_name: str):
         self.dataset = dataset
         self.song_name = song_name
+
+    def exists(self, prop_name: str) -> bool:
+        return self.dataset.exists(self.song_name, prop_name)
 
     def get_old_path(self, prop_name: str) -> Path:
         return self.dataset.get_old_file_path(self.song_name, prop_name)

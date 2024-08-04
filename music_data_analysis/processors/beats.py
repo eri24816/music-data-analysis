@@ -8,7 +8,7 @@ class BeatsProcessor(Processor):
         self.file2beats = File2Beats(device="cuda", dbn=True)
 
     def process(self, song: Song):
-        beats, downbeats = self.file2beats(song.get_old_path("mp3"))
+        beats, downbeats = self.file2beats(song.get_old_path("synth"))
         for i in range(4):
             if downbeats[0] == beats[i]:
                 start_beat = 4 - i

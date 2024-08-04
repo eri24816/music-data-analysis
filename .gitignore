@@ -2,6 +2,7 @@ data/**/*.mid
 data/**/*.midi
 data/**/*.wav
 data/**/*.mp3
+data/**/*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

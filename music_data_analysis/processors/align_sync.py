@@ -9,16 +9,18 @@ class AlignAndSyncProcessor(Processor):
         self.key_processor = CNNKeyRecognitionProcessor()
 
     def process(self, song: Song):
+        if song.exists("synced_midi"):
+            return
+
         midi = song.read_midi("midi")
 
         beats_info = song.read_json("beats")
         midi = sync_midi(midi, beats_info["beats"], beats_info["start_beat"])
 
-        key = self.key_processor(song.get_old_path("mp3")).argmax()
+        key = self.key_processor(str(song.get_old_path("synth"))).argmax()
         midi = align_midi(midi, key)
 
         song.write_midi("synced_midi", midi)
-        return song
 
 
 def time2beat(beat_time, t):
@@ -97,11 +99,13 @@ def align_midi(midi: mido.MidiFile, key: int) -> mido.MidiFile:
 
 def sync_midi(midi: mido.MidiFile, beats: list, start_beat: int) -> mido.MidiFile:
     time_res = 8
-    tick_shift = 0.3
     accumulated_time = 0
     onset_events = []  # onset, pitch, velocity, offset
     waiting_for_offset = {}
     discarded_note_count = 0
+
+    beats = [beat + 0.02 for beat in beats]  # to be accurate
+
     for event in midi:
         accumulated_time += event.time
         if event.type == "note_on" and event.velocity > 0:
@@ -112,6 +116,9 @@ def sync_midi(midi: mido.MidiFile, beats: list, start_beat: int) -> mido.MidiFil
             }
             waiting_for_offset[event.note] = note
         elif event.type == "note_on" and event.velocity == 0:
+            if event.note not in waiting_for_offset:
+                discarded_note_count += 1
+                continue
             note = waiting_for_offset.pop(event.note)
             note["offset_time"] = accumulated_time
             onset_beat = time2beat(beats, note["onset_time"])
@@ -122,10 +129,8 @@ def sync_midi(midi: mido.MidiFile, beats: list, start_beat: int) -> mido.MidiFil
             if offset_beat == None:
                 offset_beat = onset_beat
 
-            onset_beat = round(
-                (start_beat + onset_beat) * time_res + tick_shift
-            )  # quantize
-            offset_beat = round((start_beat + offset_beat) * time_res + tick_shift)
+            onset_beat = round((start_beat % 4 + onset_beat) * time_res)  # quantize
+            offset_beat = round((start_beat % 4 + offset_beat) * time_res)
 
             if offset_beat <= onset_beat:
                 offset_beat = onset_beat + 1
