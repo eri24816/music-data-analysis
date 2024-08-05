@@ -44,30 +44,6 @@ class Note:
         return self.onset > other.onset
 
 
-scale = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-quality = {
-    "": [0, 4, 7],
-    "m": [0, 3, 7],
-    "7": [0, 4, 7, 10, 10],  # the 7th note is important
-    "m7": [0, 3, 7, 10, 10],
-}
-chord_to_chroma = {}
-for i, s in enumerate(scale):
-    for q in quality:
-        chord_to_chroma[f"{s}{q}"] = [(x + i) % 12 for x in quality[q]]
-
-
-def chroma_to_chord(query):
-    scores: dict[str, float] = {}
-    for chord, chroma in chord_to_chroma.items():
-        score = 0
-        for i in chroma:
-            score += query[i]
-        scores[chord] = score / len(chroma)
-    argmax = max(scores, key=scores.__getitem__)
-    return argmax
-
-
 @dataclass
 class PRMetadata:
     name: str = ""
@@ -551,19 +527,6 @@ class PianoRoll:
             random.randint(0, (self.duration - duration) // 32) * 32
         )  # snap to bar
         return self.to_tensor(start_time, start_time + duration, normalized=normalized)
-
-    def get_chord_sequence(self, granularity=32):
-        """
-        Get the chord sequence of the pianoroll
-        """
-        chords = []
-        for bar in self.iter_over_bars_unpack(granularity):
-            chroma = [0] * 12
-            for time, pitch, vel, offset in bar:
-                chroma[pitch % 12] += 1
-            chord = chroma_to_chord(chroma)
-            chords.append(chord)
-        return chords
 
     def get_polyphony(self, granularity=32):
         """

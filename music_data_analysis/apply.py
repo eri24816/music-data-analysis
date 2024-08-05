@@ -33,5 +33,6 @@ def apply_to_dataset_multi_proc(
 
 
 def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor):
-    for song in dataset.songs():
+    processor.prepare()
+    for song in tqdm(dataset.songs()):
         processor.process(song)
