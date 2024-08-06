@@ -1,12 +1,9 @@
 from ..data_access import Song
 from ..processor import Processor
 import mido
-from madmom.features import CNNKeyRecognitionProcessor
 
 
 class AlignAndSyncProcessor(Processor):
-    def prepare(self):
-        self.key_processor = CNNKeyRecognitionProcessor()
 
     def process(self, song: Song):
         if song.exists("synced_midi"):
@@ -17,7 +14,7 @@ class AlignAndSyncProcessor(Processor):
         beats_info = song.read_json("beats")
         midi = sync_midi(midi, beats_info["beats"], beats_info["start_beat"])
 
-        key = self.key_processor(str(song.get_old_path("synth"))).argmax()
+        key = song.read_json("key")["key"]
         midi = align_midi(midi, key)
 
         song.write_midi("synced_midi", midi)
@@ -96,6 +93,58 @@ def align_midi(midi: mido.MidiFile, key: int) -> mido.MidiFile:
             new_midi.tracks[0].append(event)
     return new_midi
 
+def snap_beats(beats: list, onsets: list[float], time_res: int) -> list[float]:
+    """
+    make beat track prediction more accurate by using heurictic
+    snap beats to the nearest onsets inside one grid size left or right
+    """
+
+    if len(beats) <= 1:
+        return beats
+    if len(onsets) == 0:
+        return beats
+
+    beats_dif = []  # The difference between two beats
+    for i in range(len(beats) - 1):
+        beats_dif.append(beats[i + 1] - beats[i])
+    beats_dif.insert(0, beats[0] - 0)
+    beats_dif.append(beats[-1])
+
+    result = []
+    onset_cursor = 0
+
+    # for debug
+    deltas = []
+
+    for i in range(len(beats)):
+        candidates = []
+        threshold_left = beats[i] - beats_dif[i] / time_res
+        threshold_right = beats[i] + beats_dif[i + 1] / time_res
+
+        # collect candidates (onsets inside threshold)
+        while onset_cursor < len(onsets):
+            if onsets[onset_cursor] < threshold_left:
+                onset_cursor += 1
+                continue
+            if onsets[onset_cursor] > threshold_right:
+                break
+            candidates.append(onsets[onset_cursor])
+            onset_cursor += 1
+
+        if len(candidates) == 0:
+            result.append(beats[i])
+            continue
+
+        # find the nearest candidate
+        nearest = min(candidates, key=lambda x: abs(x - beats[i]))
+
+        deltas.append(beats[i] - nearest)
+
+        result.append(nearest)
+    # plt.hist(deltas, bins=20)
+    # plt.show()
+    return result
+
 
 def sync_midi(midi: mido.MidiFile, beats: list, start_beat: int) -> mido.MidiFile:
     time_res = 8
@@ -104,7 +153,19 @@ def sync_midi(midi: mido.MidiFile, beats: list, start_beat: int) -> mido.MidiFil
     waiting_for_offset = {}
     discarded_note_count = 0
 
-    beats = [beat + 0.02 for beat in beats]  # to be accurate
+    beats = [
+        beat + 0.035 for beat in beats
+    ]  # the beat track seems to be slightly off. Heuristics to fix it
+
+    # snap beats
+    onsets: list[float] = []
+    cumulated_time = 0
+    for event in midi:
+        cumulated_time += event.time
+        if event.type == "note_on" and event.velocity > 0:
+            onsets.append(cumulated_time)
+
+    beats = snap_beats(beats, onsets, time_res)
 
     for event in midi:
         accumulated_time += event.time

@@ -1,7 +1,7 @@
 from pathlib import Path
 from music_data_analysis.apply import apply_to_dataset
 from music_data_analysis.data_access import Dataset
-from music_data_analysis.processors.key import KeyProcessor
+from music_data_analysis.processors.note_density import NoteDensityProcessor
 
 
 if __name__ == "__main__":
@@ -14,10 +14,10 @@ if __name__ == "__main__":
 
     # proc = AlignAndSyncProcessor()
     # apply_to_dataset(dataset, proc, num_processes=8)
+    # apply_to_dataset(dataset, AlignAndSyncProcessor(), num_processes=4)
 
-    # proc = PianoRollProcessor()
-    # apply_to_dataset(dataset, proc, num_processes=8)
+    # apply_to_dataset(dataset, PianoRollProcessor(), num_processes=8)
 
-    # proc = ChordProcessor()
+    # apply_to_dataset(dataset, ChordProcessor(), num_processes=4)
 
-    apply_to_dataset(dataset, KeyProcessor(), num_processes=4)
+    apply_to_dataset(dataset, NoteDensityProcessor(), num_processes=4)
