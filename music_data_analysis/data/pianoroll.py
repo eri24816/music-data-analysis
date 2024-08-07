@@ -577,3 +577,33 @@ class PianoRoll:
                 count = 1
             velocity.append(int(vel_sum / 128 * 32 / count))
         return velocity
+
+    def get_highest_pitch(self, granularity=32):
+        """
+        Get the highest pitchs of each bar
+        """
+        highest_pitch = []
+        for bar in self.iter_over_bars_unpack(granularity):
+            if len(bar) == 0:
+                if len(highest_pitch) > 0:
+                    highest_pitch.append(highest_pitch[-1])
+                else:
+                    highest_pitch.append(0)
+            else:
+                highest_pitch.append(max([note[1] for note in bar]))
+        return highest_pitch
+
+    def get_lowest_pitch(self, granularity=32):
+        """
+        Get the lowest pitchs of each bar
+        """
+        lowest_pitch = []
+        for bar in self.iter_over_bars_unpack(granularity):
+            if len(bar) == 0:
+                if len(lowest_pitch) > 0:
+                    lowest_pitch.append(lowest_pitch[-1])
+                else:
+                    lowest_pitch.append(0)
+            else:
+                lowest_pitch.append(min([note[1] for note in bar]))
+        return lowest_pitch
