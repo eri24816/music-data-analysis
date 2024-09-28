@@ -4,13 +4,20 @@ from typing import Any
 
 from mido import MidiFile
 
+from .data.pianoroll import Pianoroll
+
 
 def exists(dataset_path: Path, song_name: str, prop_name: str) -> bool:
     return len(list((dataset_path / prop_name).glob(f"{song_name}.*"))) > 0
 
 
 def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Path:
-    return (dataset_path / prop_name).glob(f"{song_name}.*").__next__()
+    try:
+        return (dataset_path / prop_name).glob(f"{song_name}.*").__next__()
+    except StopIteration:
+        raise FileNotFoundError(
+            f"File not found for property {prop_name} of song {song_name}"
+        )
 
 
 def get_new_file_path(
@@ -51,17 +58,31 @@ def write_midi(dataset_path: Path, song_name: str, prop_name: str, midi: MidiFil
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "mid")
     midi.save(prop_file)
 
+def read_pianoroll(dataset_path: Path, song_name: str, prop_name: str) -> Pianoroll:
+    prop_file = get_old_file_path(dataset_path, song_name, prop_name)
+    return Pianoroll.load(prop_file)
+
+def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianoroll: Pianoroll):
+    prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
+    pianoroll.save(prop_file)
+
 
 class Dataset:
     def __init__(self, dataset_path: Path, song_search_index: str = "midi"):
         self.dataset_path = dataset_path
         self.song_search_index = song_search_index
 
+        if not dataset_path.exists():
+            raise FileNotFoundError(f"Dataset path {dataset_path} not found")
+        
+        self.length = len(list((dataset_path / song_search_index).glob("*")))
+
     def songs(self) -> list["Song"]:
         songs = []
         for file in (self.dataset_path / self.song_search_index).glob("*"):
             song_name = file.stem
             songs.append(Song(self, song_name))
+        songs.sort(key=lambda song: int(song.song_name))
         return songs
 
     def get_song(self, song_name: str):
@@ -92,6 +113,15 @@ class Dataset:
     def write_midi(self, song_name: str, prop_name: str, midi: MidiFile):
         write_midi(self.dataset_path, song_name, prop_name, midi)
 
+    def read_pianoroll(self, song_name: str, prop_name: str) -> Pianoroll:
+        return read_pianoroll(self.dataset_path, song_name, prop_name)
+    
+    def write_pianoroll(self, song_name: str, prop_name: str, pianoroll: Pianoroll):
+        write_pianoroll(self.dataset_path, song_name, prop_name, pianoroll)
+
+    def __len__(self):
+        return self.length
+
 
 class Song:
     def __init__(self, dataset: Dataset, song_name: str):
@@ -120,3 +150,9 @@ class Song:
 
     def write_midi(self, prop_name: str, midi: MidiFile):
         self.dataset.write_midi(self.song_name, prop_name, midi)
+
+    def read_pianoroll(self, prop_name: str) -> Pianoroll:
+        return self.dataset.read_pianoroll(self.song_name, prop_name)
+    
+    def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
+        self.dataset.write_pianoroll(self.song_name, prop_name, pianoroll)

@@ -1,12 +1,7 @@
 from pathlib import Path
 from music_data_analysis.apply import apply_to_dataset
 from music_data_analysis.data_access import Dataset
-from music_data_analysis.processors.note_stat import (
-    PolyphonyProcessor,
-    VelocityProcessor,
-    HighestPitchProcessor,
-    LowestPitchProcessor,
-)
+from music_data_analysis.processors.duration import DurationProcessor
 
 
 if __name__ == "__main__":
@@ -26,7 +21,8 @@ if __name__ == "__main__":
     # apply_to_dataset(dataset, ChordProcessor(), num_processes=4)
 
     # apply_to_dataset(dataset, NoteDensityProcessor(), num_processes=4)
-    apply_to_dataset(dataset, PolyphonyProcessor(), num_processes=4)
-    apply_to_dataset(dataset, VelocityProcessor(), num_processes=4)
-    apply_to_dataset(dataset, HighestPitchProcessor(), num_processes=4)
-    apply_to_dataset(dataset, LowestPitchProcessor(), num_processes=4)
+    # apply_to_dataset(dataset, PolyphonyProcessor(), num_processes=4)
+    # apply_to_dataset(dataset, VelocityProcessor(), num_processes=4)
+    # apply_to_dataset(dataset, HighestPitchProcessor(), num_processes=4)
+    # apply_to_dataset(dataset, LowestPitchProcessor(), num_processes=4)
+    apply_to_dataset(dataset, DurationProcessor(), num_processes=4)

@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 import random
 from typing import Generator, Tuple
@@ -51,7 +52,7 @@ class PRMetadata:
     end_time: int = 0
 
 
-class PianoRoll:
+class Pianoroll:
     """
     PianoRoll class is a representation of music, which is a sequence of notes. Each note has onset, pitch, velocity, and offset (offset is optional).
     PianoRoll is a small subset of midi.
@@ -65,7 +66,7 @@ class PianoRoll:
         """
         if not isinstance(path, Path):
             path = Path(path)
-        pr = PianoRoll(json_load(path))
+        pr = Pianoroll(json_load(path))
         pr.set_metadata(name=path.stem)
         return pr
 
@@ -87,15 +88,28 @@ class PianoRoll:
                 if tens[t, p] > thres:
                     data["onset_events"].append([t, p + 21, int(tens[t, p])])
 
-        return PianoRoll(data)
+        return Pianoroll(data)
+
+    @staticmethod
+    def from_midi_data(midi_data: BytesIO):
+        """
+        Load a pianoroll from a midi file given a bytes object
+        """
+        midi = miditoolkit.midi.parser.MidiFile(file=midi_data)
+        return Pianoroll._from_midi(midi)
 
     @staticmethod
     def from_midi(path: Path):
         """
-        Load a pianoroll from a midi file
+        Load a pianoroll from a midi file given a path
         """
         midi = miditoolkit.midi.parser.MidiFile(path)
+        return Pianoroll._from_midi(midi, name=path.stem)
+
+    @staticmethod
+    def _from_midi(midi: miditoolkit.midi.parser.MidiFile, name: str|None = None):
         data = {"onset_events": [], "pedal_events": []}
+        
         if len(midi.instruments) > 0:
             for note in midi.instruments[0].notes:
                 note: miditoolkit.Note
@@ -107,8 +121,9 @@ class PianoRoll:
                         int(note.end * 8 / midi.ticks_per_beat),
                     ]
                 )
-        pr = PianoRoll(data)
-        pr.set_metadata(name=path.stem)
+        pr = Pianoroll(data)
+        if name is not None:
+            pr.set_metadata(name=name)
         return pr
 
     def __init__(self, data: dict | list[Note]):
@@ -467,7 +482,7 @@ class PianoRoll:
     ==================
     """
 
-    def slice(self, start_time: int = 0, end_time: int = INF) -> "PianoRoll":
+    def slice(self, start_time: int = 0, end_time: int = INF) -> "Pianoroll":
         """
         Slice a pianoroll from start_time to end_time
         """
@@ -499,11 +514,11 @@ class PianoRoll:
                 if rel_time >= length:
                     break
                 sliced_pedal.append(rel_time)
-            new_pr = PianoRoll(
+            new_pr = Pianoroll(
                 {"onset_events": sliced_notes, "pedal_events": sliced_pedal}
             )
         else:
-            new_pr = PianoRoll({"onset_events": sliced_notes})
+            new_pr = Pianoroll({"onset_events": sliced_notes})
 
         new_pr.set_metadata(
             self.metadata.name,
@@ -512,7 +527,7 @@ class PianoRoll:
         )
         return new_pr
 
-    def random_slice(self, length: int = 128) -> "PianoRoll":
+    def random_slice(self, length: int = 128) -> "Pianoroll":
         """
         Randomly slice a pianoroll with length
         """
@@ -607,3 +622,40 @@ class PianoRoll:
             else:
                 lowest_pitch.append(min([note[1] for note in bar]))
         return lowest_pitch
+    
+    def copy(self):
+        return Pianoroll(self.to_dict())
+    
+    def __add__(self, other):
+        '''
+        Overlap two pianorolls
+        '''
+        onsets = self.to_dict()["onset_events"] + other.to_dict()["onset_events"]
+        onsets = sorted(onsets, key=lambda x: x[0]) # sort by onset
+        return Pianoroll({"onset_events": onsets})
+
+    def __irshift__(self, frames: int):
+        '''
+        Shift the pianoroll to the right
+        '''
+        for note in self.notes:
+            note.onset += frames
+        for pedal in self.pedal:
+            pedal += frames
+        self.duration += frames
+        return self
+    
+    def __rshift__(self, frames: int):
+        '''
+        Shift the pianoroll to the right
+        '''
+        new_pr = self.copy()
+        new_pr.__irshift__(frames)
+        return new_pr
+    
+    def __or__(self, b):
+        '''
+        Concatenate two pianorolls. a | b is equivalent to a + (b >> a.duration)
+        '''
+        return self + (b >> self.duration)
+

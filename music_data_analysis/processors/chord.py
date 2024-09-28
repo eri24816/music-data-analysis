@@ -1,4 +1,4 @@
-from ..data.pianoroll import PianoRoll
+from ..data.pianoroll import Pianoroll
 from ..processor import Processor
 from ..data_access import Song
 
@@ -76,7 +76,7 @@ def pitch_chroma_weight(pitch):
     return 1.4 ** (-pitch / 12)
 
 
-def get_chord_sequence(pr: PianoRoll, granularity):
+def get_chord_sequence(pr: Pianoroll, granularity):
     """
     Get the chord sequence of the pianoroll (heuristic).
     """
@@ -102,6 +102,6 @@ def get_chord_sequence(pr: PianoRoll, granularity):
 
 class ChordProcessor(Processor):
     def process(self, song: Song):
-        pianoroll = PianoRoll.load(song.get_old_path("pianoroll"))
+        pianoroll = Pianoroll.load(song.get_old_path("pianoroll"))
         chords = get_chord_sequence(pianoroll, granularity=16)
         song.write_json("chords", chords)

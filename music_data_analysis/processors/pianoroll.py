@@ -1,4 +1,4 @@
-from ..data.pianoroll import PianoRoll
+from ..data.pianoroll import Pianoroll
 from ..processor import Processor
 from ..data_access import Song
 
@@ -10,4 +10,4 @@ class PianoRollProcessor(Processor):
 
     def process(self, song: Song):
         midi = song.get_old_path("synced_midi")
-        PianoRoll.from_midi(midi).save(song.get_new_path("pianoroll", "json"))
+        Pianoroll.from_midi(midi).save(song.get_new_path("pianoroll", "json"))
