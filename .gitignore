@@ -3,6 +3,7 @@ data/**/*.midi
 data/**/*.wav
 data/**/*.mp3
 data/**/*.json
+debug_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

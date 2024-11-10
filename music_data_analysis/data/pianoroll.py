@@ -1,6 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
+import itertools
 from pathlib import Path
 import random
 from typing import Generator, Tuple
@@ -30,7 +31,7 @@ def json_dump(obj, f):
 
 
 class Note:
-    def __init__(self, onset, pitch, velocity, offset=None) -> None:
+    def __init__(self, onset: int, pitch: int, velocity: int, offset: int|None=None) -> None:
         self.onset = onset
         self.pitch = pitch
         self.velocity = velocity
@@ -43,6 +44,9 @@ class Note:
         if self.onset == other.onset:
             return self.pitch > other.pitch
         return self.onset > other.onset
+    
+    def copy(self):
+        return Note(self.onset, self.pitch, self.velocity, self.offset)
 
 
 @dataclass
@@ -182,7 +186,7 @@ class Pianoroll:
             yield note.onset, note.pitch, note.velocity, note.offset
 
     def iter_over_bars_unpack(
-        self, bar_length=32
+        self, bar_length=32, relative_time = False
     ) -> Generator[list[Tuple[int, int, int, int]], None, None]:
         """
         generator that yields (onset, pitch, velocity, offset iterator)
@@ -191,13 +195,16 @@ class Pianoroll:
         iterator = iter(self.notes)
         for bar_start in range(0, self.duration, bar_length):
             list_of_notes = []
+            shift = - bar_start if relative_time else 0
             try:
                 while True:
                     note = next(iterator)
                     if note.onset >= bar_start + bar_length:
+                        # put the note back
+                        iterator = itertools.chain([note], iterator)
                         break
                     list_of_notes.append(
-                        (note.onset, note.pitch, note.velocity, note.offset)
+                        (note.onset + shift, note.pitch, note.velocity, None if note.offset is None else note.offset + shift)
                     )
             except StopIteration:
                 pass
@@ -220,6 +227,17 @@ class Pianoroll:
             except StopIteration:
                 pass
             yield list_of_notes
+
+    def iter_over_bars_pr(self, bar_length=32) -> Generator["Pianoroll", None, None]:
+        """
+        generator that yields Pianoroll of each bar
+        """
+        for notes in self.iter_over_bars_unpack(bar_length, relative_time=True):
+            pr = Pianoroll({"onset_events": notes})
+            pr.set_metadata(
+                self.metadata.name, self.metadata.start_time, self.metadata.end_time
+            )
+            yield pr
 
     def get_offsets_with_pedal(self, pedal) -> list[int]:
         offsets = []
@@ -345,7 +363,7 @@ class Pianoroll:
                         int(offset * midi.ticks_per_beat / 8),
                     )
                 )
-
+        print(len(midi.instruments))
         if path:
             midi.dump(path)
         return midi
@@ -551,13 +569,14 @@ class Pianoroll:
         for bar in self.iter_over_bars_unpack(granularity):
             to_be_reduced = []
             last_note_frame = 0
-            poly = 0
+            poly = 1
             for frame, pitch, vel, offset in bar:
                 if frame > last_note_frame:
                     to_be_reduced.append(poly)
                     last_note_frame = frame
-                    poly = 0
+                    poly = 1
                 poly += 1
+            to_be_reduced.append(poly)
             max_3 = sorted(to_be_reduced, reverse=True)[:3]
             if len(max_3) == 0:
                 polyphony.append(0)
@@ -577,7 +596,7 @@ class Pianoroll:
             density.append(len(frames))
         return density
 
-    def get_velocity(self, granularity=32, num_vel=128):
+    def get_velocity(self, granularity=32):
         """
         Get the velocity of the pianoroll. Average velocity of each bar
         """
@@ -590,7 +609,7 @@ class Pianoroll:
                 count += 1
             if count == 0:
                 count = 1
-            velocity.append(int(vel_sum / 128 * 32 / count))
+            velocity.append(vel_sum / count)
         return velocity
 
     def get_highest_pitch(self, granularity=32):

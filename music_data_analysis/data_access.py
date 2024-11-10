@@ -1,8 +1,9 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-from mido import MidiFile
+from miditoolkit import MidiFile
 
 from .data.pianoroll import Pianoroll
 
@@ -13,7 +14,9 @@ def exists(dataset_path: Path, song_name: str, prop_name: str) -> bool:
 
 def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Path:
     try:
-        return (dataset_path / prop_name).glob(f"{song_name}.*").__next__()
+        # get extension of the first file found
+        ext = next(os.scandir(dataset_path / prop_name)).name.split(".")[-1]
+        return (dataset_path / prop_name / f"{song_name}.{ext}")
     except StopIteration:
         raise FileNotFoundError(
             f"File not found for property {prop_name} of song {song_name}"
@@ -56,7 +59,7 @@ def read_midi(dataset_path: Path, song_name: str, prop_name: str) -> MidiFile:
 
 def write_midi(dataset_path: Path, song_name: str, prop_name: str, midi: MidiFile):
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "mid")
-    midi.save(prop_file)
+    midi.dump(prop_file)
 
 def read_pianoroll(dataset_path: Path, song_name: str, prop_name: str) -> Pianoroll:
     prop_file = get_old_file_path(dataset_path, song_name, prop_name)
@@ -68,9 +71,10 @@ def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianorol
 
 
 class Dataset:
-    def __init__(self, dataset_path: Path, song_search_index: str = "midi"):
+    def __init__(self, dataset_path: Path, song_search_index: str = "midi", delete_when_destruct=False):
         self.dataset_path = dataset_path
         self.song_search_index = song_search_index
+        self.delete_when_destruct = delete_when_destruct
 
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
@@ -82,7 +86,10 @@ class Dataset:
         for file in (self.dataset_path / self.song_search_index).glob("*"):
             song_name = file.stem
             songs.append(Song(self, song_name))
-        songs.sort(key=lambda song: int(song.song_name))
+        try:
+            songs.sort(key=lambda song: int(song.song_name))
+        except ValueError:
+            songs.sort(key=lambda song: song.song_name)
         return songs
 
     def get_song(self, song_name: str):

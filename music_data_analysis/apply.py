@@ -5,11 +5,13 @@ from .processor import Processor
 from .data_access import Dataset
 
 
-def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1):
+def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1, verbose=True):
+    if verbose:
+        print(f"Applying {processor.__class__.__name__} to dataset {dataset.dataset_path}")
     if num_processes == 1:
-        apply_to_dataset_single_proc(dataset, processor)
+        apply_to_dataset_single_proc(dataset, processor, verbose)
     else:
-        apply_to_dataset_multi_proc(dataset, processor, num_processes)
+        apply_to_dataset_multi_proc(dataset, processor, num_processes, verbose)
 
 
 def worker_signal_handler(sig, frame):
@@ -36,17 +38,24 @@ def sigint_handler(sig, frame):
     exit(1)
 
 def apply_to_dataset_multi_proc(
-    dataset: Dataset, processor: Processor, num_processes: int
+    dataset: Dataset, processor: Processor, num_processes: int, verbose=True
 ):
     songs = dataset.songs()
     with multiprocessing.Pool(
         num_processes, initializer=process_init, initargs=(processor,)
     ) as p:
         signal.signal(signal.SIGINT, sigint_handler)
-        list(tqdm(p.imap(process_task, songs), total=len(songs)))
+        if verbose:
+            list(tqdm(p.imap(process_task, songs), total=len(songs)))
+        else:
+            list(p.imap(process_task, songs))
 
 
-def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor):
+def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True):
     processor.prepare()
-    for song in tqdm(dataset.songs()):
-        processor.process(song)
+    if verbose:
+        for song in tqdm(dataset.songs()):
+            processor.process(song)
+    else:
+        for song in dataset.songs():
+            processor.process(song)
