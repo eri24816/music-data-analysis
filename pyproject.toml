@@ -5,6 +5,16 @@ description = "A toolkit for analyzing symbolic music data"
 authors = [{name = "eri24816", email = "a931eric@gmail.com"}]
 license = "MIT"
 
+# dependencies
+dependencies = [
+    "miditoolkit>=1.0.1",
+    "tqdm>=4.66.4",
+]
+
+[project.optional-dependencies]
+beat_this = ["beat_this>=0.1.0"]
+madmom = ["madmom>=0.17"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

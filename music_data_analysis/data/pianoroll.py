@@ -569,19 +569,24 @@ class Pianoroll:
         for bar in self.iter_over_bars_unpack(granularity):
             to_be_reduced = []
             last_note_frame = 0
-            poly = 1
+            poly = 0
             for frame, pitch, vel, offset in bar:
                 if frame > last_note_frame:
-                    to_be_reduced.append(poly)
+                    if poly > 0:
+                        to_be_reduced.append(poly)
                     last_note_frame = frame
-                    poly = 1
+                    poly = 0
                 poly += 1
-            to_be_reduced.append(poly)
+            if poly > 0:
+                to_be_reduced.append(poly)
             max_3 = sorted(to_be_reduced, reverse=True)[:3]
             if len(max_3) == 0:
                 polyphony.append(0)
             else:
                 polyphony.append(sum(max_3) / len(max_3))
+                
+
+
         return polyphony
 
     def get_density(self, granularity=32):
