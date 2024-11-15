@@ -9,6 +9,7 @@ license = "MIT"
 dependencies = [
     "miditoolkit>=1.0.1",
     "tqdm>=4.66.4",
+    "chorder>=0.1.4"
 ]
 
 [project.optional-dependencies]
