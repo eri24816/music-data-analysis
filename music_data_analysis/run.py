@@ -4,8 +4,7 @@ import shutil
 import tempfile
 from music_data_analysis.apply import apply_to_dataset
 from music_data_analysis.data_access import Dataset
-from music_data_analysis.processors.align_sync import AlignAndSyncProcessor
-from music_data_analysis.processors.beats import BeatsProcessor
+
 from music_data_analysis.processors.pianoroll import PianoRollProcessor
 from music_data_analysis.processors.duration import DurationProcessor
 from music_data_analysis.processors.pitch import PitchProcessor
@@ -13,12 +12,17 @@ from music_data_analysis.processors.note_stat import NoteDensityProcessor
 from music_data_analysis.processors.note_stat import PolyphonyProcessor
 from music_data_analysis.processors.note_stat import VelocityProcessor
 from music_data_analysis.processors.chord import ChordProcessor
-from music_data_analysis.processors.synth import SynthProcessor
 
 def sync_midi(dataset: Dataset, verbose=True):
+    # lazy import here because they have optional dependencies
+    from music_data_analysis.processors.synth import SynthProcessor
+    from music_data_analysis.processors.align_sync import AlignAndSyncProcessor
+    from music_data_analysis.processors.beats import BeatsProcessor
+    from music_data_analysis.processors.key import KeyProcessor
     procs = [
         SynthProcessor(Path("W:/music/FluidR3_GM/FluidR3_GM.sf2")),
         BeatsProcessor(),
+        KeyProcessor(),
         AlignAndSyncProcessor()
     ]
 
