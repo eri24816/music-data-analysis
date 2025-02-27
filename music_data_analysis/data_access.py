@@ -1,8 +1,9 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
-
+from functools import lru_cache
 from miditoolkit import MidiFile
 
 from .data.pianoroll import Pianoroll
@@ -72,10 +73,13 @@ def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianorol
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
     pianoroll.save(prop_file)
 
+def hash_consistent(song_name: str) -> int:
+    return int(hashlib.md5(song_name.encode(),usedforsecurity=False).hexdigest(), 16)
+
 def is_in_shard(song_name: str, num_shards: int, shard_id: int) -> bool:
     if num_shards == 1:
         return True
-    return hash(song_name) % num_shards == shard_id
+    return hash_consistent(song_name) % num_shards == shard_id
 
 class Dataset:
     def __init__(self, dataset_path: Path, song_search_index: str = "midi", delete_when_destruct=False):
@@ -90,7 +94,7 @@ class Dataset:
 
         print(f"Dataset length: {self.length}")
 
-
+    @lru_cache(maxsize=16)
     def songs(self, num_shards: int = 1, shard_id: int = 0) -> list["Song"]:
         songs = []
         for file in (self.dataset_path / self.song_search_index).glob("**/*.mid"):

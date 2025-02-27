@@ -24,16 +24,14 @@ def worker_signal_handler(sig, frame):
 
 
 def process_init(processor_: Processor):
-    signal.signal(signal.SIGINT, worker_signal_handler)
+    # signal.signal(signal.SIGINT, worker_signal_handler)
     global processor
     processor = processor_
     processor.prepare()
 
-
 def process_task(song):
     global processor
     processor.process(song)
-
 def sigint_handler(sig, frame):
     print("SIGINT received, terminating processes")
     exit(1)
@@ -43,6 +41,7 @@ def apply_to_dataset_multi_proc(
 ):
     if num_processes > processor.max_num_processes:
         num_processes = processor.max_num_processes
+    processor.prepare_main_process()
     songs = dataset.songs(num_shards, shard_id)
     with multiprocessing.Pool(
         num_processes, initializer=process_init, initargs=(processor,)
@@ -55,6 +54,7 @@ def apply_to_dataset_multi_proc(
 
 
 def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True, num_shards: int = 1, shard_id: int = 0):
+    processor.prepare_main_process()
     processor.prepare()
     if verbose:
         for song in tqdm(dataset.songs(num_shards, shard_id)):

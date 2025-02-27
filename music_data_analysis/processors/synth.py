@@ -20,5 +20,5 @@ class SynthProcessor(Processor):
 
         # A mysterious 0.05s trim needed to make timing correct.
         run_command(
-            f'fluidsynth -T raw -F - {self.sound_font_path} {midi_file} | ffmpeg -y -f s32le -i - -af "atrim=0.05" -b:a {self.bit_rate}k {output_file}'
+            f'fluidsynth -T raw -F - {self.sound_font_path} {midi_file} | ffmpeg -hide_banner -loglevel error -y -f s32le -i - -af "atrim=0.05" -b:a {self.bit_rate}k {output_file}'
         )

@@ -7,6 +7,12 @@ class Processor:
     input_props: list[str]|None = None
     output_props: list[str]|None = None
 
+    def prepare_main_process(self):
+        '''
+        Called in the main process before any other process is started.
+        '''
+        pass
+
     def prepare(self):
         """
         Must be called once before process is called.
@@ -33,7 +39,6 @@ class Processor:
             
             for output_prop in self.output_props:
                 song.get_new_path(output_prop).parent.mkdir(parents=True, exist_ok=True)
-
         self.process_impl(song)
 
     def process_impl(self, song: Song):

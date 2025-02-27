@@ -104,9 +104,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", "--path", type=Path, required=True, help="Path to the dataset directory to be created, where all the processed data will be stored")
     parser.add_argument("--src_midi_dir", "--src", type=Path, default=None, help="Path to the source MIDI directory from which the content will be copied to the {dataset_path}/midi/ directory. If not provided, it will assume the {dataset_path}/midi/ directory is already present")
-    parser.add_argument("--symlink_to_src", "-l", action="store_true", help="Create a symlink to the source MIDI directory instead of copying the content")
+    parser.add_argument("--symlink_to_src", "-l", action="store_true", help="Create a symlink to the source MIDI directory instead of copying the content from it")
     parser.add_argument("--num_processes", "-n", type=int, default=None, help="Number of processes to use for the processing")
     parser.add_argument("--num_shards", "-ns", type=int, default=1, help="Number of shards to use for the processing")
+    parser.add_argument("--start_shard", "-ss", type=int, default=0, help="Start shard to use for the processing")
     
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
@@ -175,7 +176,7 @@ def main():
             shutil.rmtree(args.dataset_path / "synth")
 
 
-    for shard_id in range(args.num_shards):
+    for shard_id in range(args.start_shard, args.num_shards):
         run_shard(shard_id)
 
     print(f"Finished processing dataset at {args.dataset_path}")

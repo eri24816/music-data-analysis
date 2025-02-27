@@ -11,8 +11,9 @@ class BeatsProcessor(Processor):
     # BeatsProcessor uses GPU, so it doesn't need much CPU processes.
     max_num_processes = 2
 
-    def __init__(self):
+    def prepare_main_process(self):
         # in the main process, make sure the model is downloaded
+        print("Downloading beats model if needed...")
         File2Beats(device="cpu")
 
     def prepare(self):
