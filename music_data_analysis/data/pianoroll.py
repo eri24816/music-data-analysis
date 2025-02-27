@@ -1,10 +1,11 @@
 from copy import deepcopy
 from dataclasses import dataclass
+import dataclasses
 from io import BytesIO
 import itertools
 from pathlib import Path
 import random
-from typing import Generator, Tuple
+from typing import Any, Generator, Literal, Sequence, Tuple, TypeVar, Generic
 from matplotlib import pyplot as plt
 import numpy as np
 from math import ceil
@@ -21,12 +22,35 @@ try:
 except ImportError:
     pass
 
+def get_origin(type):
+    if hasattr(type, "__origin__"):
+        return type.__origin__
+    return type
 
-def json_load(f):
-    return json.load(open(f, "r"))
+def dict_to_dataclass_nested(obj, target_type: Any):
+    target_type = get_origin(target_type)
+    if dataclasses.is_dataclass(target_type) and isinstance(target_type, type):
+        fields = dataclasses.fields(target_type)
+        d = {}
+        for field in fields:
+            d[field.name] = dict_to_dataclass_nested(obj[field.name], field.type)
+        return target_type(**d)
+    else:
+        return obj
+
+T = TypeVar("T")
+def json_load(f, dataclass_type: None|type[T]=None) -> T:
+    obj = json.load(open(f, "r"))
+    if dataclass_type is not None:
+        # assert dataclasses.is_dataclass(dataclass_type)
+        return dict_to_dataclass_nested(obj, dataclass_type)
+    return obj
+    
 
 
 def json_dump(obj, f):
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        obj = dataclasses.asdict(obj)
     json.dump(obj, open(f, "w"))
 
 
@@ -47,6 +71,9 @@ class Note:
     
     def copy(self):
         return Note(self.onset, self.pitch, self.velocity, self.offset)
+    
+    def __eq__(self, other):
+        return self.onset == other.onset and self.pitch == other.pitch and self.velocity == other.velocity and self.offset == other.offset
 
 
 @dataclass
@@ -55,112 +82,58 @@ class PRMetadata:
     start_time: int = 0
     end_time: int = 0
 
+NotesType = TypeVar("NotesType", bound=Sequence[tuple[int,int,int,int|None]]|torch.Tensor)
+@dataclass
+class PianorollSerialized(Generic[NotesType]):
+    notes: NotesType
+    pedal: list[int]|None
+    metadata: PRMetadata
+    beats_per_bar: int
+    frames_per_beat: int
+    duration: int
 
 class Pianoroll:
     """
-    PianoRoll class is a representation of music, which is a sequence of notes. Each note has onset, pitch, velocity, and offset (offset is optional).
-    PianoRoll is a small subset of midi.
-    It's preferred over midi in case for minimal file size and easy to manipulate.
+    Pianoroll class is a representation of music, which is a sequence of notes. Each note has onset, pitch, velocity, and offset (offset is optional).
+    Pianoroll is preferred over midi in case for minimal file size and easy to manipulate.
     """
 
-    @staticmethod
-    def load(path):
-        """
-        Load a pianoroll from a json file
-        """
-        if not isinstance(path, Path):
-            path = Path(path)
-        pr = Pianoroll(json_load(path))
-        pr.set_metadata(name=path.stem)
-        return pr
 
-    @staticmethod
-    def from_tensor(tens: "torch.Tensor", thres=5, normalized=False):
-        """
-        Convert a tensor to a pianoroll
-        """
-        if not HAS_TORCH:
-            raise ImportError(
-                "PianoRoll.from_tensor requires torch. Please install torch."
-            )
-        if normalized:
-            tens = (tens + 1) * 64
-        tens = tens.cpu().to(torch.int32).clamp(0, 127)
-        data = {"onset_events": [], "pedal_events": []}
-        for t in range(tens.shape[0]):
-            for p in range(tens.shape[1]):
-                if tens[t, p] > thres:
-                    data["onset_events"].append([t, p + 21, int(tens[t, p])])
 
-        return Pianoroll(data)
+    def __init__(self, notes: list[Note], pedal: list[int]|None=None, beats_per_bar: int=4, frames_per_beat: int=8, duration: int|None=None, metadata: PRMetadata|None=None):
+        # [onset time, pitch, velocity, (offset time)]
 
-    @staticmethod
-    def from_midi_data(midi_data: BytesIO):
-        """
-        Load a pianoroll from a midi file given a bytes object
-        """
-        midi = miditoolkit.midi.parser.MidiFile(file=midi_data)
-        return Pianoroll._from_midi(midi)
+        self.notes = notes
+        self.notes = sorted(self.notes)  # ensure the event is sorted by time
+        self.beats_per_bar = beats_per_bar
+        self.frames_per_beat = frames_per_beat
+        self.frames_per_bar = self.beats_per_bar * self.frames_per_beat
 
-    @staticmethod
-    def from_midi(path: Path):
-        """
-        Load a pianoroll from a midi file given a path
-        """
-        midi = miditoolkit.midi.parser.MidiFile(path)
-        return Pianoroll._from_midi(midi, name=path.stem)
+        self.pedal = pedal
+        if self.pedal is not None:
+            self.pedal = sorted(self.pedal)
 
-    @staticmethod
-    def _from_midi(midi: miditoolkit.midi.parser.MidiFile, name: str|None = None):
-        data = {"onset_events": [], "pedal_events": []}
-        
-        if len(midi.instruments) > 0:
-            for note in midi.instruments[0].notes:
-                note: miditoolkit.Note
-                data["onset_events"].append(
-                    [
-                        int(note.start * 8 / midi.ticks_per_beat),
-                        note.pitch,
-                        note.velocity,
-                        int(note.end * 8 / midi.ticks_per_beat),
-                    ]
-                )
-        pr = Pianoroll(data)
-        if name is not None:
-            pr.set_metadata(name=name)
-        return pr
-
-    def __init__(self, data: dict | list[Note]):
-        # [onset time, pitch, velocity]
-        if isinstance(data, dict):
-            self.notes = [Note(*note) for note in data["onset_events"]]
-            self.notes = sorted(self.notes)  # ensure the event is sorted by time
-
-            if "pedal_events" in data:
-                # Timestamps of pedal up events. (Otherwise the pedal is always down)
-                self.pedal = data["pedal_events"]
-                self.pedal = sorted(self.pedal)
-            else:
-                self.pedal = None
-
+        # calculate duration
+        if duration is not None:
+            self.duration = duration
         else:
-            self.notes = data
-            self.pedal = None
-
-        if len(self.notes):
-            if self.notes[-1].offset is None:
-                self.duration = ceil((self.notes[-1].onset + 1) / 32) * 32
+            if len(self.notes):
+                if self.notes[-1].offset is None:
+                    self.duration = ceil((self.notes[-1].onset + 1) / self.frames_per_bar) * self.frames_per_bar
+                else:
+                    self.duration = ceil((self.notes[-1].offset) / self.frames_per_bar) * self.frames_per_bar
             else:
-                self.duration = ceil((self.notes[-1].offset) / 32) * 32
-        else:
-            self.duration = 0
+                self.duration = 0
 
         self._have_offset = len(self.notes) == 0 or self.notes[0].offset is not None
 
-        self.metadata = PRMetadata("", 0, self.duration)
+        if metadata is None:
+            self.metadata = PRMetadata("", 0, self.duration)
+        else:
+            self.metadata = metadata
 
     def __repr__(self) -> str:
-        return f"PianoRoll Bar {self.metadata.start_time//32:03d} - {ceil(self.metadata.end_time/32):03d} of {self.metadata.name}"
+        return f"Pianoroll Bar {self.metadata.start_time//self.frames_per_bar:03d} - {ceil(self.metadata.end_time/self.frames_per_bar):03d} of {self.metadata.name}"
 
     """
     ==================
@@ -186,11 +159,14 @@ class Pianoroll:
             yield note.onset, note.pitch, note.velocity, note.offset
 
     def iter_over_bars_unpack(
-        self, bar_length=32, relative_time = False
+        self, bar_length: int|None=None, relative_time = False
     ) -> Generator[list[Tuple[int, int, int, int]], None, None]:
         """
         generator that yields (onset, pitch, velocity, offset iterator)
         """
+
+        if bar_length is None:
+            bar_length = self.frames_per_bar
 
         iterator = iter(self.notes)
         for bar_start in range(0, self.duration, bar_length):
@@ -210,10 +186,12 @@ class Pianoroll:
                 pass
             yield list_of_notes
 
-    def iter_over_bars(self, bar_length=32) -> Generator[list[Note], None, None]:
+    def iter_over_bars(self, bar_length: int|None=None, relative_time = False) -> Generator[list[Note], None, None]:
         """
         generator that yields list of notes in each bar
         """
+        if bar_length is None:
+            bar_length = self.frames_per_bar
 
         iterator = iter(self.notes)
         for bar_start in range(0, self.duration, bar_length):
@@ -228,12 +206,15 @@ class Pianoroll:
                 pass
             yield list_of_notes
 
-    def iter_over_bars_pr(self, bar_length=32) -> Generator["Pianoroll", None, None]:
+    def iter_over_bars_pr(self, bar_length: int|None=None) -> Generator["Pianoroll", None, None]:
         """
         generator that yields Pianoroll of each bar
         """
-        for notes in self.iter_over_bars_unpack(bar_length, relative_time=True):
-            pr = Pianoroll({"onset_events": notes})
+        if bar_length is None:
+            bar_length = self.frames_per_bar
+
+        for notes in self.iter_over_bars(bar_length, relative_time=True):
+            pr = Pianoroll(notes, self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, duration = bar_length)
             pr.set_metadata(
                 self.metadata.name, self.metadata.start_time, self.metadata.end_time
             )
@@ -261,26 +242,103 @@ class Pianoroll:
         offsets = list(reversed(offsets))
         return offsets
 
+    '''
+    ==================
+    Save and load
+    ==================
+    '''
+
+    def to_dict(self) -> PianorollSerialized[list[tuple[int,int,int,int|None]]]:
+        '''
+        For json.dump
+        '''
+        notes = [
+            (note.onset, note.pitch, note.velocity, note.offset)
+            for note in self.notes
+        ]
+        return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
+    
+    def to_dict_torch(self) -> PianorollSerialized[torch.Tensor]:
+        '''
+        For torch.save
+        '''
+        # make notes compact with torch.Tensor [num_notes, 4]
+        neg_one_if_none = lambda x: -1 if x is None else x
+        notes = torch.tensor([[note.onset, note.pitch, note.velocity, neg_one_if_none(note.offset)] for note in self.notes])
+        return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
+        
+
+    def save(self, path: Path, format: Literal["json", "torch"] = "json"):
+        if format == "json":
+            json_dump(self.to_dict(), path)
+        elif format == "torch":
+            torch.save(self.to_dict_torch(), path)
+        else:
+            raise ValueError(f"Invalid format: {format}")
+    
+    @staticmethod
+    def load(path: Path) -> "Pianoroll":
+        """
+        Load a pianoroll from a json file
+        """
+        if path.suffix == ".json":
+            pr = Pianoroll.load_json(path)
+        elif path.suffix == ".pt":
+            pr = Pianoroll.load_torch(path)
+        else:
+            raise ValueError(f"Invalid file extension: {path.suffix}")
+        return pr
+    
+    @staticmethod
+    def load_json(path: Path) -> "Pianoroll":
+        """
+        Load a pianoroll from a json file
+        """
+        serialized = json_load(path, PianorollSerialized[list[tuple[int,int,int,int|None]]])
+        notes = [Note(*note) for note in serialized.notes]
+        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, serialized.frames_per_beat, serialized.duration, serialized.metadata)
+    
+    @staticmethod
+    def load_torch(path: Path) -> "Pianoroll":
+        """
+        Load a pianoroll from a torch file
+        """
+        serialized = torch.load(path)
+        # convert serialized.notes to list[Note]
+        notes = []
+        for onset, pitch, velocity, offset in serialized.notes:
+            if offset == -1:
+                offset = None
+            notes.append(Note(onset, pitch, velocity, offset))
+        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, serialized.frames_per_beat, serialized.duration, serialized.metadata)
+        
     """
     ==================
-    Type conversion
+    Conversion between pianoroll and tensor
     ==================
     """
 
-    def to_dict(self):
-        data = {"onset_events": [], "pedal_events": []}
-        for note in self.notes:
-            data["onset_events"].append([note.onset, note.pitch, note.velocity])
-        data["pedal_events"] = self.pedal if self.pedal else []
-        return data
-
-    def save(self, path):
-        data = {"onset_events": [], "pedal_events": []}
-        for note in self.notes:
-            data["onset_events"].append([note.onset, note.pitch, note.velocity])
-        data["pedal_events"] = self.pedal if self.pedal else []
-
-        json_dump(data, path)
+    @staticmethod
+    def from_tensor(tens: "torch.Tensor", thres=5, normalized=False, beats_per_bar: int=4, frames_per_beat: int=8):
+        """
+        Convert a tensor to a pianoroll
+        """
+        if not HAS_TORCH:
+            raise ImportError(
+                "Pianoroll.from_tensor requires torch. Please install torch."
+            )
+        if normalized:
+            tens = (tens + 1) * 64
+        tens = tens.cpu().to(torch.int32).clamp(0, 127)
+        
+        notes: list[Note] = []
+        for t in range(tens.shape[0]):
+            for p in range(tens.shape[1]):
+                if tens[t, p] > thres:
+                    notes.append(Note(t, p + 21, int(tens[t, p])))
+    
+        return Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
+    
 
     def to_tensor(
         self,
@@ -294,8 +352,8 @@ class Pianoroll:
         Convert the pianoroll to a tensor
         """
         if not HAS_TORCH:
-            raise ImportError(
-                "PianoRoll.to_tensor requires torch. Please install torch."
+            raise RuntimeError(
+                "Pianoroll.to_tensor requires torch. Please install torch."
             )
 
         n_features = 88 if not chromagram else 12
@@ -325,19 +383,56 @@ class Pianoroll:
         if normalized:
             piano_roll = piano_roll / 64 - 1
         return piano_roll
+    
+    '''
+    ==================
+    Conversion between pianoroll and miditoolkit.MidiFile
+    ==================
+    ''' 
+
+    @staticmethod
+    def from_midi(path_or_file: Path | BytesIO | miditoolkit.midi.parser.MidiFile, name: str|None=None, beats_per_bar: int=4, frames_per_beat: int=8) -> "Pianoroll":
+        """
+        Load a pianoroll from a midi file given a path
+        """
+        if isinstance(path_or_file, Path):
+            midi = miditoolkit.midi.parser.MidiFile(path_or_file)
+        elif isinstance(path_or_file, BytesIO):
+            midi = miditoolkit.midi.parser.MidiFile(file=path_or_file)
+        else:
+            midi = path_or_file
+        
+        notes: list[Note] = []
+        if len(midi.instruments) > 0:
+            for note in midi.instruments[0].notes:
+                note: miditoolkit.Note
+                notes.append(
+                    Note(
+                        int(note.start * frames_per_beat / midi.ticks_per_beat),
+                        note.pitch,
+                        note.velocity,
+                        int(note.end * frames_per_beat / midi.ticks_per_beat),
+                    )
+                )
+        pr = Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
+        if name is None and isinstance(path_or_file, Path):
+            name = path_or_file.stem
+        pr.set_metadata(name=name)
+        return pr
 
     def to_midi(
         self, path=None, apply_pedal=True, bpm=105
-    ) -> miditoolkit.midi.parser.MidiFile:
+    ) -> miditoolkit.MidiFile:
         """
-        Convert the pianoroll to a midi file
+        Convert the pianoroll to a midi file. Returns a miditoolkit.MidiFile object
+        If path is specified, the midi file will be saved to the path.
         """
         notes = deepcopy(self.notes)
         if apply_pedal:
             if self.pedal:
                 pedal = self.pedal
             else:
-                pedal = list(range(0, self.duration, 32))
+                pedal = list(range(0, self.duration, self.frames_per_bar))
             offsets = self.get_offsets_with_pedal(pedal)
             for i, note in enumerate(notes):
                 note.offset = offsets[i]
@@ -346,7 +441,7 @@ class Pianoroll:
         return self._save_to_midi([notes], path, bpm)
 
     def _save_to_midi(self, instrs, path, bpm=105):
-        midi = miditoolkit.midi.parser.MidiFile()
+        midi = miditoolkit.MidiFile()
         midi.instruments = [
             miditoolkit.Instrument(program=0, is_drum=False, name=f"Piano{i}")
             for i in range(len(instrs))
@@ -485,8 +580,10 @@ class Pianoroll:
         # enlarge the image
         img = np.repeat(img, 8, axis=0)
         img = np.repeat(img, 8, axis=1)
+
+        # add bar lines
         for t in range(self.duration):
-            if t % 32 == 0:
+            if t % self.frames_per_bar == 0:
                 img[:, t * 8] = 120
 
         # inverse y
@@ -504,9 +601,10 @@ class Pianoroll:
         """
         Slice a pianoroll from start_time to end_time
         """
+        if end_time < start_time:
+            raise ValueError("end_time must be greater than start_time")
         length = end_time - start_time
-        sliced_notes = []
-        sliced_pedal = []
+        sliced_notes: list[Note] = []
         for time, pitch, vel, offset in self.iter_over_notes_unpack():
             rel_time = time - start_time
             if rel_time < 0:
@@ -520,9 +618,10 @@ class Pianoroll:
             else:
                 rel_offset = None
             # only contain notes between start_time and end_time
-            sliced_notes.append([rel_time, pitch, vel, rel_offset])
+            sliced_notes.append(Note(rel_time, pitch, vel, rel_offset))
 
         if self.pedal:
+            sliced_pedal: list[int] = []
             for pedal in self.pedal:
                 time = pedal
                 rel_time = time - start_time
@@ -533,10 +632,10 @@ class Pianoroll:
                     break
                 sliced_pedal.append(rel_time)
             new_pr = Pianoroll(
-                {"onset_events": sliced_notes, "pedal_events": sliced_pedal}
+                sliced_notes, sliced_pedal, self.beats_per_bar, self.frames_per_beat, duration = length
             )
         else:
-            new_pr = Pianoroll({"onset_events": sliced_notes})
+            new_pr = Pianoroll(sliced_notes, self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, duration = length)
 
         new_pr.set_metadata(
             self.metadata.name,
@@ -545,26 +644,31 @@ class Pianoroll:
         )
         return new_pr
 
-    def random_slice(self, length: int = 128) -> "Pianoroll":
+    def random_slice(self, length: int = 128, snap_to_bar: bool = True) -> "Pianoroll":
         """
         Randomly slice a pianoroll with length
         """
-        start_time = random.randint(0, max(0, (self.duration - length) // 32)) * 32
+        snap = self.frames_per_bar if snap_to_bar else 1
+        start_time = random.randint(0, max(0, (self.duration - length) // snap)) * snap
         return self.slice(start_time, start_time + length)
 
-    def get_random_tensor_clip(self, duration, normalized=False):
+    def get_random_tensor_clip(self, duration, normalized=False, snap_to_bar: bool = True):
         """
         Get a random clip of the pianoroll
         """
+        snap = self.frames_per_bar if snap_to_bar else 1
         start_time = (
-            random.randint(0, (self.duration - duration) // 32) * 32
+            random.randint(0, (self.duration - duration) // snap) * snap
         )  # snap to bar
         return self.to_tensor(start_time, start_time + duration, normalized=normalized)
 
-    def get_polyphony(self, granularity=32):
+    def get_polyphony(self, granularity: int|None=None):
         """
         Get the polyphony of the pianoroll
         """
+        if granularity is None:
+            granularity = self.frames_per_bar
+
         polyphony = []
         for bar in self.iter_over_bars_unpack(granularity):
             to_be_reduced = []
@@ -589,10 +693,13 @@ class Pianoroll:
 
         return polyphony
 
-    def get_density(self, granularity=32):
+    def get_density(self, granularity: int|None=None):
         """
         Get the density of the pianoroll
         """
+        if granularity is None:
+            granularity = self.frames_per_bar
+
         density = []
         for bar in self.iter_over_bars_unpack(granularity):
             frames = set()
@@ -601,10 +708,13 @@ class Pianoroll:
             density.append(len(frames))
         return density
 
-    def get_velocity(self, granularity=32):
+    def get_velocity(self, granularity: int|None=None):
         """
         Get the velocity of the pianoroll. Average velocity of each bar
         """
+        if granularity is None:
+            granularity = self.frames_per_bar
+
         velocity = []
         for bar in self.iter_over_bars_unpack(granularity):
             vel_sum = 0
@@ -617,10 +727,13 @@ class Pianoroll:
             velocity.append(vel_sum / count)
         return velocity
 
-    def get_highest_pitch(self, granularity=32):
+    def get_highest_pitch(self, granularity: int|None=None):
         """
         Get the highest pitchs of each bar
         """
+        if granularity is None:
+            granularity = self.frames_per_bar
+
         highest_pitch = []
         for bar in self.iter_over_bars_unpack(granularity):
             if len(bar) == 0:
@@ -632,10 +745,13 @@ class Pianoroll:
                 highest_pitch.append(max([note[1] for note in bar]))
         return highest_pitch
 
-    def get_lowest_pitch(self, granularity=32):
+    def get_lowest_pitch(self, granularity: int|None=None):
         """
         Get the lowest pitchs of each bar
         """
+        if granularity is None:
+            granularity = self.frames_per_bar
+
         lowest_pitch = []
         for bar in self.iter_over_bars_unpack(granularity):
             if len(bar) == 0:
@@ -648,15 +764,18 @@ class Pianoroll:
         return lowest_pitch
     
     def copy(self):
-        return Pianoroll(self.to_dict())
+        return Pianoroll(self.notes.copy(), self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, self.duration)
     
-    def __add__(self, other):
+    def __add__(self, other: "Pianoroll"):
         '''
         Overlap two pianorolls
         '''
-        onsets = self.to_dict()["onset_events"] + other.to_dict()["onset_events"]
-        onsets = sorted(onsets, key=lambda x: x[0]) # sort by onset
-        return Pianoroll({"onset_events": onsets})
+        assert self.beats_per_bar == other.beats_per_bar, "Beats per bar must be the same when adding two pianorolls"
+        assert self.frames_per_beat == other.frames_per_beat, "Frames per beat must be the same when adding two pianorolls"
+        notes = self.notes + other.notes
+        notes = sorted(notes, key=lambda x: x.onset) # sort by onset
+        duration = max(self.duration, other.duration)
+        return Pianoroll(notes, self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, duration)
 
     def __irshift__(self, frames: int):
         '''
@@ -664,8 +783,9 @@ class Pianoroll:
         '''
         for note in self.notes:
             note.onset += frames
-        for pedal in self.pedal:
-            pedal += frames
+        if self.pedal:
+            for i, pedal in enumerate(self.pedal):
+                self.pedal[i] += frames
         self.duration += frames
         return self
     

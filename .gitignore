@@ -5,6 +5,8 @@ data/**/*.mp3
 data/**/*.json
 debug_data/
 
+/ignore/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
