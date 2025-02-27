@@ -5,13 +5,14 @@ from .processor import Processor
 from .data_access import Dataset
 
 
-def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1, verbose=True):
+def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1, verbose=True, num_shards: int = 1, shard_id: int = 0):
     if verbose:
-        print(f"Applying {processor.__class__.__name__} to dataset {dataset.dataset_path}")
+        shard_str = f"[shard {shard_id}] " if num_shards > 1 else ""
+        print(f"{shard_str}Applying {processor.__class__.__name__} to dataset {dataset.dataset_path}")
     if num_processes == 1:
-        apply_to_dataset_single_proc(dataset, processor, verbose)
+        apply_to_dataset_single_proc(dataset, processor, verbose, num_shards, shard_id)
     else:
-        apply_to_dataset_multi_proc(dataset, processor, num_processes, verbose)
+        apply_to_dataset_multi_proc(dataset, processor, num_processes, verbose, num_shards, shard_id)
 
 
 def worker_signal_handler(sig, frame):
@@ -38,24 +39,26 @@ def sigint_handler(sig, frame):
     exit(1)
 
 def apply_to_dataset_multi_proc(
-    dataset: Dataset, processor: Processor, num_processes: int, verbose=True
+    dataset: Dataset, processor: Processor, num_processes: int, verbose=True, num_shards: int = 1, shard_id: int = 0
 ):
-    songs = dataset.songs()
+    if num_processes > processor.max_num_processes:
+        num_processes = processor.max_num_processes
+    songs = dataset.songs(num_shards, shard_id)
     with multiprocessing.Pool(
         num_processes, initializer=process_init, initargs=(processor,)
     ) as p:
         signal.signal(signal.SIGINT, sigint_handler)
         if verbose:
-            list(tqdm(p.imap(process_task, songs), total=len(songs)))
+            list(tqdm(p.imap(process_task, songs), total=len(songs), desc=f"{processor.__class__.__name__} ({num_processes} processes)"))
         else:
             list(p.imap(process_task, songs))
 
 
-def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True):
+def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True, num_shards: int = 1, shard_id: int = 0):
     processor.prepare()
     if verbose:
-        for song in tqdm(dataset.songs()):
+        for song in tqdm(dataset.songs(num_shards, shard_id)):
             processor.process(song)
     else:
-        for song in dataset.songs():
+        for song in dataset.songs(num_shards, shard_id):
             processor.process(song)

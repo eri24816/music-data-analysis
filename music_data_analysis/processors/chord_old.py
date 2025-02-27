@@ -101,7 +101,10 @@ def get_chord_sequence(pr: Pianoroll, granularity):
 
 
 class ChordProcessor(Processor):
-    def process(self, song: Song):
+    input_props = ["pianoroll"]
+    output_props = ["chords"]
+
+    def process_impl(self, song: Song):
         pianoroll = song.read_pianoroll('pianoroll')
         chords = get_chord_sequence(pianoroll, granularity=16)
         song.write_json("chords", chords)

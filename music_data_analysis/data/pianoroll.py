@@ -22,6 +22,7 @@ try:
 except ImportError:
     pass
 
+
 def get_origin(type):
     if hasattr(type, "__origin__"):
         return type.__origin__
@@ -91,6 +92,10 @@ class PianorollSerialized(Generic[NotesType]):
     beats_per_bar: int
     frames_per_beat: int
     duration: int
+
+    
+if HAS_TORCH:
+    torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
 
 class Pianoroll:
     """
@@ -264,7 +269,10 @@ class Pianoroll:
         '''
         # make notes compact with torch.Tensor [num_notes, 4]
         neg_one_if_none = lambda x: -1 if x is None else x
-        notes = torch.tensor([[note.onset, note.pitch, note.velocity, neg_one_if_none(note.offset)] for note in self.notes])
+        notes = torch.tensor(
+            [[note.onset, note.pitch, note.velocity, neg_one_if_none(note.offset)] for note in self.notes],
+            dtype=torch.int32
+        )
         return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
         
 
@@ -307,6 +315,9 @@ class Pianoroll:
         # convert serialized.notes to list[Note]
         notes = []
         for onset, pitch, velocity, offset in serialized.notes:
+            onset = int(onset)
+            pitch = int(pitch)
+            velocity = int(velocity)
             if offset == -1:
                 offset = None
             notes.append(Note(onset, pitch, velocity, offset))
@@ -454,11 +465,10 @@ class Pianoroll:
                     miditoolkit.Note(
                         vel,
                         pitch,
-                        int(onset * midi.ticks_per_beat / 8),
-                        int(offset * midi.ticks_per_beat / 8),
+                        int(onset * midi.ticks_per_beat / self.frames_per_beat),
+                        int(offset * midi.ticks_per_beat / self.frames_per_beat),
                     )
                 )
-        print(len(midi.instruments))
         if path:
             midi.dump(path)
         return midi

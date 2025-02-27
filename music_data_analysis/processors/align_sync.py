@@ -6,17 +6,30 @@ from ..processor import Processor
 
 class AlignAndSyncProcessor(Processor):
 
-    def process(self, song: Song):
+    input_props = ["midi"] # Beats and key are optional so aren't listed here
+    output_props = ["synced_midi"]
+
+    def __init__(self, align_midi: bool = True, sync_midi: bool = True, frames_per_beat: int|None=None):
+        if sync_midi and frames_per_beat is None:
+            raise ValueError("frames_per_beat must be provided if sync_midi is True")
+        self.align_midi = align_midi
+        self.sync_midi = sync_midi
+        self.frames_per_beat = frames_per_beat
+
+    def process_impl(self, song: Song):
         if song.exists("synced_midi"):
             return
 
         midi = song.read_midi("midi")
 
-        beats_info = song.read_json("beats")
-        midi = sync_midi(midi, beats_info["beats"], beats_info["start_beat"])
+        if self.sync_midi:
+            beats_info = song.read_json("beats")
+            assert self.frames_per_beat is not None
+            midi = sync_midi(midi, beats_info["beats"], beats_info["start_beat"], time_res=self.frames_per_beat)
 
-        key = song.read_json("key")["key"]
-        midi = align_midi(midi, key)
+        if self.align_midi:
+            key = song.read_json("key")["key"]
+            midi = align_midi(midi, key)
 
         song.write_midi("synced_midi", midi)
 
@@ -147,8 +160,8 @@ def snap_beats(beats: list, onsets: list[float], time_res: int) -> list[float]:
     return result
 
 
-def sync_midi(midi: miditoolkit.MidiFile, beats: list, start_beat: int) -> miditoolkit.MidiFile:
-    time_res = 8
+def sync_midi(midi: miditoolkit.MidiFile, beats: list, start_beat: int, time_res: int) -> miditoolkit.MidiFile:
+    
     notes = []  # onset, pitch, velocity, offset
     discarded_note_count = 0
 

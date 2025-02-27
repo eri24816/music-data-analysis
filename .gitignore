@@ -1,8 +1,4 @@
-data/**/*.mid
-data/**/*.midi
-data/**/*.wav
-data/**/*.mp3
-data/**/*.json
+/data/
 debug_data/
 
 /ignore/

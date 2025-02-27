@@ -33,7 +33,10 @@ def chord_to_name(chord: Chord):
     return note_unify_map[root] + '_' + quality
 
 class ChordProcessor(Processor):
-    def process(self, song: Song):
+    input_props = ["synced_midi"]
+    output_props = ["chords"]
+
+    def process_impl(self, song: Song):
         midi = song.read_midi('synced_midi')
         chords = Dechorder.dechord(midi, scale=None)
         chords: list[Chord]

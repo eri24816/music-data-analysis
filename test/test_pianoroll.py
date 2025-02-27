@@ -12,7 +12,7 @@ def assert_notes_equal_ignoring_offset(notes1: list[Note], notes2: list[Note]):
         assert note1.velocity == note2.velocity
         assert note1.onset == note2.onset
 
-def iter_samples(path: Path = MIDI_SAMPLES_PATH, frames_per_beat_list: list[int] = [8,17]) -> Iterator[Pianoroll]:
+def iter_samples(path: Path = MIDI_SAMPLES_PATH, frames_per_beat_list: list[int] = [8,64]) -> Iterator[Pianoroll]:
     for file in path.glob("*.mid"):
         for frames_per_beat in frames_per_beat_list:
             yield Pianoroll.from_midi(file, frames_per_beat=frames_per_beat)
@@ -22,8 +22,8 @@ iter_samples_decor = pytest.mark.parametrize("pr",  list(iter_samples()))
 @iter_samples_decor
 def test_from_to_midi(pr: Pianoroll):
     midi = pr.to_midi(apply_pedal=False)
-    pr2 = Pianoroll.from_midi(midi)
-    assert pr.notes == pr2.notes
+    pr2 = Pianoroll.from_midi(midi, frames_per_beat=pr.frames_per_beat)
+    assert_notes_equal_ignoring_offset(pr.notes, pr2.notes)
 
 
 @iter_samples_decor

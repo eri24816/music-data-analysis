@@ -5,13 +5,18 @@ from ..utils import run_command
 
 
 class SynthProcessor(Processor):
+    input_props = ["midi"]
+    output_props = ["synth"]
+
     def __init__(self, sound_font_path: Path, bit_rate: int = 96):
         self.sound_font_path = sound_font_path
         self.bit_rate = bit_rate
 
-    def process(self, song: Song):
+    def process_impl(self, song: Song):
         midi_file = song.get_old_path("midi")
         output_file = song.get_new_path("synth", "mp3")
+
+        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         # A mysterious 0.05s trim needed to make timing correct.
         run_command(

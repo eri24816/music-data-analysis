@@ -63,7 +63,10 @@ def fill_out(pitches):
     return pitches
 
 class PitchProcessor(Processor):
-    def process(self, song: Song):
+    input_props = ["pianoroll"]
+    output_props = ["pitch"]
+
+    def process_impl(self, song: Song):
 
         pr = song.read_pianoroll('pianoroll')
 

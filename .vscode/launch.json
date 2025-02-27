@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Music Analysis",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/run.py",
+            "args": [
+                "--path", "ignore/debug_ds",
+                "--src", "ignore/debug_midi",
+                "-v",
+                "-spe",
+                "--soundfont", "ignore/FluidR3_GM.sf2",
+                "--frames_per_beat", "64",
+                "-r",
+                "-n", "1"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "console": "integratedTerminal",
+        }
+    ]
+}

@@ -14,8 +14,8 @@ def exists(dataset_path: Path, song_name: str, prop_name: str) -> bool:
 
 def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Path:
     try:
-        # get extension of the first file found
-        ext = next(os.scandir(dataset_path / prop_name)).name.split(".")[-1]
+        # get extension of the first leaf file found
+        ext = next(f.name.split(".")[-1] for f in (dataset_path / prop_name).glob("**/*") if f.is_file())
         return (dataset_path / prop_name / f"{song_name}.{ext}")
     except StopIteration:
         raise FileNotFoundError(
@@ -24,12 +24,15 @@ def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Pat
 
 
 def get_new_file_path(
-    dataset_path: Path, song_name: str, prop_name: str, ext: str, create_dir=True
+    dataset_path: Path, song_name: str, prop_name: str, ext: str|None = None, create_dir=True
 ) -> Path:
     dir_path = dataset_path / prop_name
     if create_dir:
         dir_path.mkdir(exist_ok=True, parents=True)
-    return dataset_path / prop_name / f"{song_name}.{ext}"
+    result = dataset_path / prop_name / f"{song_name}"
+    if ext is not None:
+        result = result.with_suffix(f".{ext}")
+    return result
 
 
 def read_json(dataset_path: Path, song_name: str, prop_name: str) -> Any:
@@ -69,6 +72,10 @@ def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianorol
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
     pianoroll.save(prop_file)
 
+def is_in_shard(song_name: str, num_shards: int, shard_id: int) -> bool:
+    if num_shards == 1:
+        return True
+    return hash(song_name) % num_shards == shard_id
 
 class Dataset:
     def __init__(self, dataset_path: Path, song_search_index: str = "midi", delete_when_destruct=False):
@@ -79,13 +86,17 @@ class Dataset:
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
         
-        self.length = len(list((dataset_path / song_search_index).glob("*")))
+        self.length = len(list((dataset_path / song_search_index).glob("**/*.mid")))
 
-    def songs(self) -> list["Song"]:
+        print(f"Dataset length: {self.length}")
+
+
+    def songs(self, num_shards: int = 1, shard_id: int = 0) -> list["Song"]:
         songs = []
-        for file in (self.dataset_path / self.song_search_index).glob("*"):
-            song_name = file.stem
-            songs.append(Song(self, song_name))
+        for file in (self.dataset_path / self.song_search_index).glob("**/*.mid"):
+            song_name = str(file.relative_to(self.dataset_path / self.song_search_index).with_suffix(""))
+            if is_in_shard(song_name, num_shards, shard_id):
+                songs.append(Song(self, song_name))
         try:
             songs.sort(key=lambda song: int(song.song_name))
         except ValueError:
@@ -102,7 +113,7 @@ class Dataset:
         return get_old_file_path(self.dataset_path, song_name, prop_name)
 
     def get_new_file_path(
-        self, song_name: str, prop_name: str, ext: str, create_dir=True
+        self, song_name: str, prop_name: str, ext: str|None = None, create_dir=True
     ):
         return get_new_file_path(
             self.dataset_path, song_name, prop_name, ext, create_dir
@@ -141,7 +152,7 @@ class Song:
     def get_old_path(self, prop_name: str) -> Path:
         return self.dataset.get_old_file_path(self.song_name, prop_name)
 
-    def get_new_path(self, prop_name: str, ext: str, create_dir=True):
+    def get_new_path(self, prop_name: str, ext: str|None = None, create_dir=True):
         return self.dataset.get_new_file_path(
             self.song_name, prop_name, ext, create_dir
         )
