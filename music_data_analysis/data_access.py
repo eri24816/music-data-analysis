@@ -1,6 +1,5 @@
 import json
 import hashlib
-import os
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
@@ -91,8 +90,6 @@ class Dataset:
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
         
         self.length = len(list((dataset_path / song_search_index).glob("**/*.mid")))
-
-        print(f"Dataset length: {self.length}")
 
     @lru_cache(maxsize=16)
     def songs(self, num_shards: int = 1, shard_id: int = 0) -> list["Song"]:

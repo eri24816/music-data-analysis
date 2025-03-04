@@ -94,7 +94,7 @@ class PianorollSerialized(Generic[NotesType]):
     duration: int
 
     
-if HAS_TORCH:
+if HAS_TORCH and hasattr(torch.serialization, 'add_safe_globals'):
     torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
 
 class Pianoroll:
@@ -330,7 +330,7 @@ class Pianoroll:
     """
 
     @staticmethod
-    def from_tensor(tens: "torch.Tensor", thres=5, normalized=False, beats_per_bar: int=4, frames_per_beat: int=8):
+    def from_tensor(tens: "torch.Tensor", thres=5, normalized=False, binary=False, beats_per_bar: int=4, frames_per_beat: int=8):
         """
         Convert a tensor to a pianoroll
         """
@@ -338,8 +338,10 @@ class Pianoroll:
             raise ImportError(
                 "Pianoroll.from_tensor requires torch. Please install torch."
             )
-        if normalized:
+        if normalized and not binary:
             tens = (tens + 1) * 64
+        elif binary:
+            tens = tens * 100
         tens = tens.cpu().to(torch.int32).clamp(0, 127)
         
         notes: list[Note] = []
@@ -357,6 +359,7 @@ class Pianoroll:
         end_time: int = INF,
         padding=False,
         normalized=False,
+        binary=False,
         chromagram=False,
     ) -> "torch.Tensor":
         """
@@ -389,9 +392,12 @@ class Pianoroll:
             pitch -= 21  # midi to piano
             if chromagram:
                 pitch = (pitch + 9) % 12
-            piano_roll[rel_time, pitch] = vel
+            if binary:
+                piano_roll[rel_time, pitch] = 1
+            else:
+                piano_roll[rel_time, pitch] = vel
 
-        if normalized:
+        if normalized and not binary:
             piano_roll = piano_roll / 64 - 1
         return piano_roll
     
@@ -419,10 +425,10 @@ class Pianoroll:
                 note: miditoolkit.Note
                 notes.append(
                     Note(
-                        int(note.start * frames_per_beat / midi.ticks_per_beat),
+                        int(round(note.start * frames_per_beat / midi.ticks_per_beat)),
                         note.pitch,
                         note.velocity,
-                        int(note.end * frames_per_beat / midi.ticks_per_beat),
+                        int(round(note.end * frames_per_beat / midi.ticks_per_beat)),
                     )
                 )
         pr = Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
