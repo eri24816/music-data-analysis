@@ -1,5 +1,7 @@
 import multiprocessing
 import signal
+import traceback
+import time
 from tqdm import tqdm
 from .processor import Processor
 from .data_access import Dataset
@@ -9,6 +11,10 @@ def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int 
     if verbose:
         shard_str = f"[shard {shard_id}] " if num_shards > 1 else ""
         print(f"{shard_str}Applying {processor.__class__.__name__} to dataset {dataset.dataset_path}")
+
+    if num_processes > processor.max_num_processes:
+        num_processes = processor.max_num_processes
+        
     if num_processes == 1:
         apply_to_dataset_single_proc(dataset, processor, verbose, num_shards, shard_id)
     else:
@@ -31,16 +37,19 @@ def process_init(processor_: Processor):
 
 def process_task(song):
     global processor
-    processor.process(song)
+    try:
+        processor.process(song)
+    except Exception as e:
+        traceback.print_exc()
+    
 def sigint_handler(sig, frame):
     print("SIGINT received, terminating processes")
+    time.sleep(1)
     exit(1)
 
 def apply_to_dataset_multi_proc(
     dataset: Dataset, processor: Processor, num_processes: int, verbose=True, num_shards: int = 1, shard_id: int = 0
 ):
-    if num_processes > processor.max_num_processes:
-        num_processes = processor.max_num_processes
     processor.prepare_main_process()
     songs = dataset.songs(num_shards, shard_id)
     with multiprocessing.Pool(
