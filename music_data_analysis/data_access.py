@@ -15,8 +15,12 @@ def exists(dataset_path: Path, song_name: str, prop_name: str) -> bool:
 def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Path:
     try:
         # get extension of the first leaf file found
-        ext = next(f.name.split(".")[-1] for f in (dataset_path / prop_name).glob("**/*") if f.is_file())
-        return (dataset_path / prop_name / f"{song_name}.{ext}")
+        if "/" in song_name:
+            song_path = song_name.rsplit("/", 1)[0]
+        else:
+            song_path = song_name
+        ext = next(f.suffix for f in (dataset_path / prop_name / song_path).glob("*") if f.is_file())
+        return ((dataset_path / prop_name / song_name).with_suffix(f"{ext}"))
     except StopIteration:
         raise FileNotFoundError(
             f"File not found for property {prop_name} of song {song_name}"
@@ -81,7 +85,7 @@ def is_in_shard(song_name: str, num_shards: int, shard_id: int) -> bool:
     return hash_consistent(song_name) % num_shards == shard_id
 
 class Dataset:
-    def __init__(self, dataset_path: Path, song_search_index: str = "midi", delete_when_destruct=False):
+    def __init__(self, dataset_path: Path, song_search_index: str|None = None, delete_when_destruct=False):
         self.dataset_path = dataset_path
         self.song_search_index = song_search_index
         self.delete_when_destruct = delete_when_destruct
@@ -89,15 +93,43 @@ class Dataset:
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
         
-        self.length = len(list((dataset_path / song_search_index).glob("**/*.mid")))
+
+        if (dataset_path / "manifest.json").exists():
+            self.manifest = json.load(open(dataset_path / "manifest.json"))
+            self.length = self.manifest["num_songs"]
+        else:
+            self.manifest = None
+            if song_search_index is None:
+                song_search_index = "midi"
+            self.length = len([f for f in list((dataset_path / song_search_index).glob("**/*")) if f.is_file()])
 
     @lru_cache(maxsize=16)
     def songs(self, num_shards: int = 1, shard_id: int = 0) -> list["Song"]:
         songs = []
-        for file in (self.dataset_path / self.song_search_index).glob("**/*.mid"):
-            song_name = str(file.relative_to(self.dataset_path / self.song_search_index).with_suffix(""))
-            if is_in_shard(song_name, num_shards, shard_id):
+    
+        if self.manifest is not None and len(self.manifest["properties"]) > 0:
+
+            if self.song_search_index is None:
+                song_search_index = list(self.manifest["properties"].keys())[0]
+            else:
+                song_search_index = self.song_search_index
+
+            for song_name in self.manifest["properties"][song_search_index]:
                 songs.append(Song(self, song_name))
+        else:
+            if self.song_search_index is None:
+                song_search_index = "midi"
+            else:
+                song_search_index = self.song_search_index
+
+            for file in (self.dataset_path / song_search_index).glob("**/*"):
+                if not file.is_file():
+                    continue
+                song_name = str(file.relative_to(self.dataset_path / song_search_index).with_suffix(""))
+                songs.append(Song(self, song_name))
+
+        songs = [song for song in songs if is_in_shard(song.song_name, num_shards, shard_id)]
+        
         try:
             songs.sort(key=lambda song: int(song.song_name))
         except ValueError:
@@ -121,6 +153,8 @@ class Dataset:
         )
 
     def read_json(self, song_name: str, prop_name: str) -> Any:
+        if self.manifest is not None and prop_name in self.manifest["properties"]:
+            return self.manifest["properties"][prop_name][song_name]
         return read_json(self.dataset_path, song_name, prop_name)
 
     def write_json(self, song_name: str, prop_name: str, data_: Any = EMPTY, **kwargs):
