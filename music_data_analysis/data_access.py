@@ -18,7 +18,7 @@ def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Pat
         if "/" in song_name:
             song_path = song_name.rsplit("/", 1)[0]
         else:
-            song_path = song_name
+            song_path = ''
         ext = next(f.suffix for f in (dataset_path / prop_name / song_path).glob("*") if f.is_file())
         return ((dataset_path / prop_name / song_name).with_suffix(f"{ext}"))
     except StopIteration:
@@ -68,9 +68,9 @@ def write_midi(dataset_path: Path, song_name: str, prop_name: str, midi: MidiFil
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "mid")
     midi.dump(prop_file)
 
-def read_pianoroll(dataset_path: Path, song_name: str, prop_name: str) -> Pianoroll:
+def read_pianoroll(dataset_path: Path, song_name: str, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
     prop_file = get_old_file_path(dataset_path, song_name, prop_name)
-    return Pianoroll.load(prop_file)
+    return Pianoroll.load(prop_file, frames_per_beat=frames_per_beat)
 
 def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianoroll: Pianoroll):
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
@@ -93,7 +93,6 @@ class Dataset:
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
         
-
         if (dataset_path / "manifest.json").exists():
             self.manifest = json.load(open(dataset_path / "manifest.json"))
             self.length = self.manifest["num_songs"]
@@ -166,8 +165,8 @@ class Dataset:
     def write_midi(self, song_name: str, prop_name: str, midi: MidiFile):
         write_midi(self.dataset_path, song_name, prop_name, midi)
 
-    def read_pianoroll(self, song_name: str, prop_name: str) -> Pianoroll:
-        return read_pianoroll(self.dataset_path, song_name, prop_name)
+    def read_pianoroll(self, song_name: str, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
+        return read_pianoroll(self.dataset_path, song_name, prop_name, frames_per_beat)
     
     def write_pianoroll(self, song_name: str, prop_name: str, pianoroll: Pianoroll):
         write_pianoroll(self.dataset_path, song_name, prop_name, pianoroll)
@@ -204,8 +203,8 @@ class Song:
     def write_midi(self, prop_name: str, midi: MidiFile):
         self.dataset.write_midi(self.song_name, prop_name, midi)
 
-    def read_pianoroll(self, prop_name: str) -> Pianoroll:
-        return self.dataset.read_pianoroll(self.song_name, prop_name)
+    def read_pianoroll(self, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
+        return self.dataset.read_pianoroll(self.song_name, prop_name, frames_per_beat)
     
     def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
         self.dataset.write_pianoroll(self.song_name, prop_name, pianoroll)
