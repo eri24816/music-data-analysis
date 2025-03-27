@@ -47,7 +47,7 @@ def json_load(f, dataclass_type: None|type[T]=None) -> T:
         # assert dataclasses.is_dataclass(dataclass_type)
         return dict_to_dataclass_nested(obj, dataclass_type)
     return obj
-    
+
 
 
 def json_dump(obj, f):
@@ -70,10 +70,10 @@ class Note:
         if self.onset == other.onset:
             return self.pitch > other.pitch
         return self.onset > other.onset
-    
+
     def copy(self):
         return Note(self.onset, self.pitch, self.velocity, self.offset)
-    
+
     def __eq__(self, other):
         return self.onset == other.onset and self.pitch == other.pitch and self.velocity == other.velocity and self.offset == other.offset
 
@@ -94,7 +94,7 @@ class PianorollSerialized(Generic[NotesType]):
     frames_per_beat: int
     duration: int
 
-    
+
 if HAS_TORCH and hasattr(torch.serialization, 'add_safe_globals'):
     torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
 
@@ -207,6 +207,8 @@ class Pianoroll:
                     note = next(iterator)
                     if note.onset >= bar_start + bar_length:
                         break
+                    if relative_time:
+                        note = Note(note.onset - bar_start, note.pitch, note.velocity, note.offset - bar_start)
                     list_of_notes.append(note)
             except StopIteration:
                 pass
@@ -235,7 +237,7 @@ class Pianoroll:
                 return self.duration
             else:
                 return pedal[i]
-        for onset, pitch, vel, _ in reversed( 
+        for onset, pitch, vel, _ in reversed(
             list(self.iter_over_notes_unpack())
         ):
             pitch -= 21  # midi number to piano
@@ -252,11 +254,11 @@ class Pianoroll:
                     if next_onset[pitch_to_check] - next_pedal_up < hold_beat_threshold*(1-abs(pitch_to_check-pitch)/hold_pitch_threshold)*self.frames_per_beat:
                         break
                 else:
-                    hold_offset = True  
+                    hold_offset = True
 
             if hold_offset:
                 offset = min(next_onset[pitch],get_pedal_up(i+1))
-            else: 
+            else:
                 offset = min(next_onset[pitch], next_pedal_up)
 
             offsets.append(offset)
@@ -279,7 +281,7 @@ class Pianoroll:
             for note in self.notes
         ]
         return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
-    
+
     def to_dict_torch(self) -> PianorollSerialized[torch.Tensor]:
         '''
         For torch.save
@@ -291,7 +293,7 @@ class Pianoroll:
             dtype=torch.int32
         )
         return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
-        
+
 
     def save(self, path: Path, format: Literal["json", "torch"] = "json"):
         if format == "json":
@@ -300,7 +302,7 @@ class Pianoroll:
             torch.save(self.to_dict_torch(), path)
         else:
             raise ValueError(f"Invalid format: {format}")
-    
+
     @staticmethod
     def load(path: Path, frames_per_beat: int|None=None) -> "Pianoroll":
         """
@@ -313,7 +315,7 @@ class Pianoroll:
         else:
             raise ValueError(f"Invalid file extension: {path.suffix}")
         return pr
-    
+
     @staticmethod
     def load_json(path: Path, frames_per_beat: int|None=None) -> "Pianoroll":
         """
@@ -327,7 +329,7 @@ class Pianoroll:
                 note.onset = int(round(note.onset * frames_per_beat_scale))
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
         return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, serialized.duration, serialized.metadata)
-    
+
     @staticmethod
     def load_torch(path: Path, frames_per_beat: int|None=None) -> "Pianoroll":
         """
@@ -353,7 +355,7 @@ class Pianoroll:
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
 
         return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, serialized.duration, serialized.metadata)
-        
+
     """
     ==================
     Conversion between pianoroll and tensor
@@ -374,15 +376,15 @@ class Pianoroll:
         elif binary:
             tens = tens * 100
         tens = tens.cpu().to(torch.int32).clamp(0, 127)
-        
+
         notes: list[Note] = []
         for t in range(tens.shape[0]):
             for p in range(tens.shape[1]):
                 if tens[t, p] > thres:
                     notes.append(Note(t, p + 21, int(tens[t, p])))
-    
+
         return Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
-    
+
 
     def to_tensor(
         self,
@@ -431,12 +433,12 @@ class Pianoroll:
         if normalized and not binary:
             piano_roll = piano_roll / 64 - 1
         return piano_roll
-    
+
     '''
     ==================
     Conversion between pianoroll and miditoolkit.MidiFile
     ==================
-    ''' 
+    '''
 
     @staticmethod
     def from_midi(path_or_file: Path | BytesIO | miditoolkit.midi.parser.MidiFile, name: str|None=None, beats_per_bar: int=4, frames_per_beat: int=8) -> "Pianoroll":
@@ -449,7 +451,7 @@ class Pianoroll:
             midi = miditoolkit.midi.parser.MidiFile(file=path_or_file)
         else:
             midi = path_or_file
-        
+
         notes: list[Note] = []
         if len(midi.instruments) > 0:
             for note in midi.instruments[0].notes:
@@ -762,7 +764,7 @@ class Pianoroll:
                 polyphony.append(0)
             else:
                 polyphony.append(sum(max_3) / len(max_3))
-                
+
 
 
         return polyphony
@@ -836,10 +838,10 @@ class Pianoroll:
             else:
                 lowest_pitch.append(min([note[1] for note in bar]))
         return lowest_pitch
-    
+
     def copy(self):
         return Pianoroll(self.notes.copy(), self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, self.duration)
-    
+
     def __add__(self, other: "Pianoroll"):
         '''
         Overlap two pianorolls
@@ -862,7 +864,7 @@ class Pianoroll:
                 self.pedal[i] += frames
         self.duration += frames
         return self
-    
+
     def __rshift__(self, frames: int):
         '''
         Shift the pianoroll to the right
@@ -870,7 +872,7 @@ class Pianoroll:
         new_pr = self.copy()
         new_pr.__irshift__(frames)
         return new_pr
-    
+
     def __or__(self, b):
         '''
         Concatenate two pianorolls. a | b is equivalent to a + (b >> a.duration)
