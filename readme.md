@@ -72,12 +72,12 @@ dataset_dir/
     ...
 ```
 
-The `music_data_analysis.Dataset` class provides an interface for accessing the attributes of the pieces.
+The `music_data_analysis.Dataset` class provides an interface for accessing attributes of the pieces.
 
 ```python
 from music_data_analysis import Dataset
 
-dataset = Dataset(dataset_dir)
+dataset = Dataset('path_to_dataset')
 songs = dataset.songs() # list[music_data_analysis.Song]
 
 # Get midi of the first song
