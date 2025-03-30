@@ -338,7 +338,11 @@ class Pianoroll:
         serialized = torch.load(path)
         # convert serialized.notes to list[Note]
         notes = []
-        for onset, pitch, velocity, offset in serialized.notes:
+
+        serialized_notes = (
+            serialized.notes.cpu().tolist()
+        )  # without this, the iteration will be slow
+        for onset, pitch, velocity, offset in serialized_notes:
             onset = int(onset)
             pitch = int(pitch)
             velocity = int(velocity)
