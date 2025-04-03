@@ -5,9 +5,22 @@ It also provides a compact interface for accessing such a dataset.
 
 ## Analysis pipeline
 
-The input data is a directory containing midi files. Nested directories are allowed.
+The analysis pipeline requires a source directory containing MIDI files as input and outputs a dataset directory containing analysis results.
 
-The pipeline have 4 actions:
+Before running the pipeline, you need to:
+1. Install this package (for local installation, `pip install -e .`)
+2. Prepare a soundfont file on your disk
+3. Prepare the source folder 
+
+Run the pipeline:
+
+```bash
+python run.py --path <path_to_dataset_dir> --src <path_to_src_dir> --verbose\
+ -sape\
+ --soundfont <path_to_soundfont>
+```
+
+The pipeline provides 4 actions:
 
 1. `--sync`, `-s`: Sync the notes to the beat
     - Input: `midi`
@@ -21,29 +34,6 @@ The pipeline have 4 actions:
 4. `--extract_features`, `-e`: Extract features from the pianorolls
     - Input: `pianoroll`
     - Output: many
-
-Before running the pipeline, you need to:
-1. Install this package (for local installation, `pip install -e .`)
-2. Prepare a soundfont file on your disk
-3. Put source midi files in a directory
-
-Run the pipeline with all actions:
-
-```bash
-python run.py --dataset_path <path_to_dataset> --src_midi_dir <path_to_source_midi_dir>\
- --sync --align --to_pianoroll --extract_features\ # actions
- --soundfont <path_to_soundfont> # --soundfont is required for -s and -a because the algorithm runs on audio
-```
-
-where `dataset_path` is where the dataset will be saved.
-
-Equivalent simplified version of the above command:
-
-```bash
-python run.py --path <path_to_dataset> --src <path_to_midi_dir> --verbose\
- -sape\
- --soundfont <path_to_soundfont>
-```
 
 Combinations of actions:
 
