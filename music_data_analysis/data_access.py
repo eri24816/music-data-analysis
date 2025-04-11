@@ -70,11 +70,25 @@ def write_midi(dataset_path: Path, song_name: str, prop_name: str, midi: MidiFil
 
 def read_pianoroll(dataset_path: Path, song_name: str, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
     prop_file = get_old_file_path(dataset_path, song_name, prop_name)
-    return Pianoroll.load(prop_file, frames_per_beat=frames_per_beat)
+    pr = Pianoroll.load(prop_file, frames_per_beat=frames_per_beat)
+    pr.metadata.name = song_name
+    return pr
 
 def write_pianoroll(dataset_path: Path, song_name: str, prop_name: str, pianoroll: Pianoroll):
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
     pianoroll.save(prop_file)
+
+
+def read_pt(dataset_path: Path, song_name: str, prop_name: str) -> Any:
+    import torch
+    prop_file = get_old_file_path(dataset_path, song_name, prop_name)
+    return torch.load(prop_file, map_location=torch.device("cpu"))
+
+
+def write_pt(dataset_path: Path, song_name: str, prop_name: str, data: Any):
+    import torch
+    prop_file = get_new_file_path(dataset_path, song_name, prop_name, "pt")
+    torch.save(data, prop_file)
 
 def hash_consistent(song_name: str) -> int:
     return int(hashlib.md5(song_name.encode(),usedforsecurity=False).hexdigest(), 16)
@@ -92,7 +106,7 @@ class Dataset:
 
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} not found")
-        
+
         if (dataset_path / "manifest.json").exists():
             self.manifest = json.load(open(dataset_path / "manifest.json"))
             self.length = self.manifest["num_songs"]
@@ -105,7 +119,7 @@ class Dataset:
     @lru_cache(maxsize=16)
     def songs(self, num_shards: int = 1, shard_id: int = 0) -> list["Song"]:
         songs = []
-    
+
         if self.manifest is not None and len(self.manifest["properties"]) > 0:
 
             if self.song_search_index is None:
@@ -128,7 +142,7 @@ class Dataset:
                 songs.append(Song(self, song_name))
 
         songs = [song for song in songs if is_in_shard(song.song_name, num_shards, shard_id)]
-        
+
         try:
             songs.sort(key=lambda song: int(song.song_name))
         except ValueError:
@@ -167,9 +181,15 @@ class Dataset:
 
     def read_pianoroll(self, song_name: str, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
         return read_pianoroll(self.dataset_path, song_name, prop_name, frames_per_beat)
-    
+
     def write_pianoroll(self, song_name: str, prop_name: str, pianoroll: Pianoroll):
         write_pianoroll(self.dataset_path, song_name, prop_name, pianoroll)
+
+    def read_pt(self, song_name: str, prop_name: str) -> Any:
+        return read_pt(self.dataset_path, song_name, prop_name)
+
+    def write_pt(self, song_name: str, prop_name: str, data: Any):
+        write_pt(self.dataset_path, song_name, prop_name, data)
 
     def __len__(self):
         return self.length
@@ -205,6 +225,12 @@ class Song:
 
     def read_pianoroll(self, prop_name: str, frames_per_beat: int|None=None) -> Pianoroll:
         return self.dataset.read_pianoroll(self.song_name, prop_name, frames_per_beat)
-    
+
     def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
         self.dataset.write_pianoroll(self.song_name, prop_name, pianoroll)
+
+    def read_pt(self, prop_name: str) -> Any:
+        return self.dataset.read_pt(self.song_name, prop_name)
+
+    def write_pt(self, prop_name: str, data: Any):
+        self.dataset.write_pt(self.song_name, prop_name, data)

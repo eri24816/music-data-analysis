@@ -206,6 +206,8 @@ class Pianoroll:
                 while True:
                     note = next(iterator)
                     if note.onset >= bar_start + bar_length:
+                        # put the note back
+                        iterator = itertools.chain([note], iterator)
                         break
                     if relative_time:
                         note = Note(note.onset - bar_start, note.pitch, note.velocity, note.offset - bar_start)
@@ -222,7 +224,7 @@ class Pianoroll:
             bar_length = self.frames_per_bar
 
         for notes in self.iter_over_bars(bar_length, relative_time=True):
-            pr = Pianoroll(notes, self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, duration = bar_length)
+            pr = Pianoroll(notes, beats_per_bar=self.beats_per_bar, frames_per_beat=self.frames_per_beat, duration = bar_length)
             pr.set_metadata(
                 self.metadata.name, self.metadata.start_time, self.metadata.end_time
             )
@@ -357,8 +359,12 @@ class Pianoroll:
             for note in notes:
                 note.onset = int(round(note.onset * frames_per_beat_scale))
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
+            duration = int(round(serialized.duration * frames_per_beat_scale))
+        else:
+            duration = serialized.duration
+            frames_per_beat = serialized.frames_per_beat
 
-        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, serialized.duration, serialized.metadata)
+        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, serialized.metadata)
 
     """
     ==================
@@ -670,6 +676,13 @@ class Pianoroll:
         img = torch.flip(img, dims=(0,))
 
         return img
+
+    def show(self):
+        """
+        Show the pianoroll
+        """
+        plt.imshow(self.to_img_tensor())
+        plt.show()
 
     """
     ==================
