@@ -253,6 +253,14 @@ class Song:
     def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
         self.dataset.write_pianoroll(self.song_name, prop_name, pianoroll)
 
+    
+    def read_pt(self, prop_name: str) -> Any:
+        return self.dataset.read_pt(self.song_name, prop_name)
+    
+    def write_pt(self, prop_name: str, data: Any):
+        self.dataset.write_pt(self.song_name, prop_name, data)
+    
+
 class SongSegment:
     # TODO: unhardcode this
     _hardcoded_granularity_in_beats = {
