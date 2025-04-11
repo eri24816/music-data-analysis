@@ -43,12 +43,12 @@ def to_pianoroll(dataset: Dataset, verbose=True, beats_per_bar: int = 4, frames_
 
 def extract_features(dataset: Dataset, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     procs = [
-        # DurationProcessor(),
-        # PitchProcessor(),
-        # NoteDensityProcessor(),
-        # PolyphonyProcessor(),
+        DurationProcessor(),
+        PitchProcessor(),
+        NoteDensityProcessor(),
+        PolyphonyProcessor(),
         VelocityProcessor(),
-        # ChordProcessor()
+        ChordProcessor(),
     ]
 
     for proc in procs:
