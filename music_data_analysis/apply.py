@@ -4,10 +4,30 @@ import traceback
 import time
 from tqdm import tqdm
 from .processor import Processor
-from .data_access import Dataset
+from .data_access import Dataset, Song
 
+def check_song_should_be_processed(song: Song, processor: Processor) -> bool:
+    if processor.input_props is not None:
+        for input_prop in processor.input_props:
+            if not song.exists(input_prop):
+                raise FileNotFoundError(f"File {input_prop} not found for song {song.song_name}. It is required by {self.__class__.__name__}")
+            
+    if processor.output_props is not None:
+        all_output_props_exist = True
+    
+        for output_prop in processor.output_props:
+            if not song.exists(output_prop):
+                all_output_props_exist = False
+                break
+        if all_output_props_exist:
+            return False
+        
+        for output_prop in processor.output_props:
+            song.get_new_path(output_prop).parent.mkdir(parents=True, exist_ok=True)
 
-def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1, verbose=True, num_shards: int = 1, shard_id: int = 0):
+    return True
+
+def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int = 1, verbose=True, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     if verbose:
         shard_str = f"[shard {shard_id}] " if num_shards > 1 else ""
         print(f"{shard_str}Applying {processor.__class__.__name__} to dataset {dataset.dataset_path}")
@@ -16,9 +36,9 @@ def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int 
         num_processes = processor.max_num_processes
         
     if num_processes == 1:
-        apply_to_dataset_single_proc(dataset, processor, verbose, num_shards, shard_id)
+        apply_to_dataset_single_proc(dataset, processor, verbose, num_shards, shard_id, overwrite_existing)
     else:
-        apply_to_dataset_multi_proc(dataset, processor, num_processes, verbose, num_shards, shard_id)
+        apply_to_dataset_multi_proc(dataset, processor, num_processes, verbose, num_shards, shard_id, overwrite_existing)
 
 
 def worker_signal_handler(sig, frame):
@@ -38,8 +58,9 @@ def process_init(processor_: Processor):
 def process_task(song):
     global processor
     try:
-        processor.process(song)
-    except Exception as e:
+        if check_song_should_be_processed(song, processor):
+            processor.process(song)
+    except Exception:
         traceback.print_exc()
     
 def sigint_handler(sig, frame):
@@ -48,26 +69,44 @@ def sigint_handler(sig, frame):
     exit(1)
 
 def apply_to_dataset_multi_proc(
-    dataset: Dataset, processor: Processor, num_processes: int, verbose=True, num_shards: int = 1, shard_id: int = 0
+    dataset: Dataset, processor: Processor, num_processes: int, verbose=True, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False
 ):
     processor.prepare_main_process()
     songs = dataset.songs(num_shards, shard_id)
+    def iterable_wrapper(iterable):
+        pbar = tqdm(iterable, desc=f"{processor.__class__.__name__} shard {shard_id}/{num_shards} ({num_processes} processes)")
+        pbar.set_postfix(skipped=0)
+        n_skipped = 0
+        for song in pbar:
+            if check_song_should_be_processed(song, processor) or overwrite_existing:
+                yield song
+            else:
+                n_skipped += 1
+                pbar.set_postfix(skipped=n_skipped)
+        pbar.close()
+
     with multiprocessing.Pool(
         num_processes, initializer=process_init, initargs=(processor,)
     ) as p:
         signal.signal(signal.SIGINT, sigint_handler)
-        if verbose:
-            list(tqdm(p.imap(process_task, songs), total=len(songs), desc=f"{processor.__class__.__name__} ({num_processes} processes)"))
-        else:
-            list(p.imap(process_task, songs))
+        list(p.imap(process_task, iterable_wrapper(songs)))
 
 
-def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True, num_shards: int = 1, shard_id: int = 0):
+
+def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose=True, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     processor.prepare_main_process()
     processor.prepare()
-    if verbose:
-        for song in tqdm(dataset.songs(num_shards, shard_id)):
+
+    iterable = dataset.songs(num_shards, shard_id)
+
+    iterable = tqdm(iterable, desc=f"{processor.__class__.__name__} shard {shard_id}/{num_shards}")
+    iterable.set_postfix(skipped=0)
+
+    n_skipped = 0
+    for song in iterable:
+        if check_song_should_be_processed(song, processor) or overwrite_existing:
             processor.process(song)
-    else:
-        for song in dataset.songs(num_shards, shard_id):
-            processor.process(song)
+        else:
+            n_skipped += 1
+            if isinstance(iterable, tqdm):
+                iterable.set_postfix(skipped=n_skipped)

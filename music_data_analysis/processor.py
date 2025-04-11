@@ -22,23 +22,7 @@ class Processor:
         pass
 
     def process(self, song: Song):
-        if self.input_props is not None:
-            for input_prop in self.input_props:
-                if not song.exists(input_prop):
-                    raise FileNotFoundError(f"File {input_prop} not found for song {song.song_name}. It is required by {self.__class__.__name__}")
-                
-        if self.output_props is not None:
-            all_output_props_exist = True
 
-            for output_prop in self.output_props:
-                if not song.exists(output_prop):
-                    all_output_props_exist = False
-                    break
-            if all_output_props_exist:
-                return
-            
-            for output_prop in self.output_props:
-                song.get_new_path(output_prop).parent.mkdir(parents=True, exist_ok=True)
         self.process_impl(song)
 
     def process_impl(self, song: Song):

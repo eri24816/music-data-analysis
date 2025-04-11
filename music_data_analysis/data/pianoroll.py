@@ -304,7 +304,7 @@ class Pianoroll:
             raise ValueError(f"Invalid format: {format}")
 
     @staticmethod
-    def load(path: Path, frames_per_beat: int|None=None) -> "Pianoroll":
+    def load(path: Path, frames_per_beat: int = 8) -> "Pianoroll":
         """
         Load a pianoroll from a json file
         """

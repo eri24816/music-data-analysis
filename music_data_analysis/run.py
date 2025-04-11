@@ -17,7 +17,7 @@ from .processors.note_stat import PolyphonyProcessor
 from .processors.note_stat import VelocityProcessor
 from .processors.chord import ChordProcessor
 
-def align_and_sync_midi(dataset: Dataset, soundfont_path: Path, align=True, sync=True, frames_per_beat: int|None=None, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0):
+def align_and_sync_midi(dataset: Dataset, soundfont_path: Path, align=True, sync=True, frames_per_beat: int|None=None, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     # lazy import here because they contain optional dependencies
     from .processors.synth import SynthProcessor
     from .processors.align_sync import AlignAndSyncProcessor
@@ -31,38 +31,38 @@ def align_and_sync_midi(dataset: Dataset, soundfont_path: Path, align=True, sync
     ]
 
     for proc in procs:
-        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id)
+        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
 
-def to_pianoroll(dataset: Dataset, verbose=True, beats_per_bar: int = 4, frames_per_beat: int = 16, save_format: Literal["torch", "json"] = "torch", num_processes: int = 1, num_shards: int = 1, shard_id: int = 0):
+def to_pianoroll(dataset: Dataset, verbose=True, beats_per_bar: int = 4, frames_per_beat: int = 16, save_format: Literal["torch", "json"] = "torch", num_processes: int = 1, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     procs = [
         PianoRollProcessor(beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat, save_format=save_format)
     ]
 
     for proc in procs:
-        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id)
+        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
 
-def extract_features(dataset: Dataset, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0):
+def extract_features(dataset: Dataset, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     procs = [
-        DurationProcessor(),
-        PitchProcessor(),
-        NoteDensityProcessor(),
-        PolyphonyProcessor(),
+        # DurationProcessor(),
+        # PitchProcessor(),
+        # NoteDensityProcessor(),
+        # PolyphonyProcessor(),
         VelocityProcessor(),
-        ChordProcessor()
+        # ChordProcessor()
     ]
 
     for proc in procs:
-        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id)
+        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
 
-def recon_midi(dataset: Dataset, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0):
+def recon_midi(dataset: Dataset, verbose=True, num_processes: int = 1, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
     procs = [
         ReconstructProcessor()
     ]
 
     for proc in procs:
-        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id)
+        apply_to_dataset(dataset, proc, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
 
-def run(src_path:str|Path, sync:bool=False, verbose=True, soundfont_path:Path|None=None, frames_per_beat: int|None=None) -> Dataset:
+def run(src_path:str|Path, sync:bool=False, verbose=True, soundfont_path:Path|None=None, frames_per_beat: int|None=None, overwrite_existing: bool = False) -> Dataset:
     src_path = Path(src_path)
     dataset_path = Path(tempfile.mkdtemp())
     while Path(dataset_path).exists():
@@ -93,9 +93,9 @@ def run(src_path:str|Path, sync:bool=False, verbose=True, soundfont_path:Path|No
 
     if sync:
         assert soundfont_path is not None, "soundfont_path is required when sync is True"
-        align_and_sync_midi(dataset, soundfont_path, verbose=verbose, frames_per_beat=frames_per_beat)
-    to_pianoroll(dataset, verbose=verbose)
-    extract_features(dataset, verbose=verbose)
+        align_and_sync_midi(dataset, soundfont_path, verbose=verbose, frames_per_beat=frames_per_beat, overwrite_existing=overwrite_existing)
+    to_pianoroll(dataset, verbose=verbose, overwrite_existing=overwrite_existing)
+    extract_features(dataset, verbose=verbose, overwrite_existing=overwrite_existing)
     return dataset
 
 
@@ -108,6 +108,8 @@ def main():
     parser.add_argument("--num_processes", "-n", type=int, default=None, help="Number of processes to use for the processing")
     parser.add_argument("--num_shards", "-ns", type=int, default=1, help="Number of shards to use for the processing")
     parser.add_argument("--start_shard", "-ss", type=int, default=0, help="Start shard to use for the processing")
+    parser.add_argument("--search_index", "-i", type=str, default='midi', help="The property to search songs in the dataset")
+    parser.add_argument("--overwrite_existing", "-o", action="store_true", help="Overwrite existing files even if they are already present. If not present, the program will skip the files that already exist.")
     
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
@@ -153,22 +155,22 @@ def main():
     else:
         args.dataset_path.mkdir(parents=True, exist_ok=True)
 
-    dataset = Dataset(Path(args.dataset_path), "midi")
+    dataset = Dataset(Path(args.dataset_path), args.search_index)
 
     print(f"Dataset initialized at {args.dataset_path}")
 
     def run_shard(shard_id: int):
         if args.sync or args.align:
-            align_and_sync_midi(dataset, args.soundfont_path, align=args.align, sync=args.sync, frames_per_beat=args.frames_per_beat, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id)
+            align_and_sync_midi(dataset, args.soundfont_path, align=args.align, sync=args.sync, frames_per_beat=args.frames_per_beat, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id, overwrite_existing=args.overwrite_existing)
 
         if args.to_pianoroll:
-            to_pianoroll(dataset, verbose=args.verbose, beats_per_bar=args.beats_per_bar, frames_per_beat=args.frames_per_beat, save_format=args.save_format, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id)
+            to_pianoroll(dataset, verbose=args.verbose, beats_per_bar=args.beats_per_bar, frames_per_beat=args.frames_per_beat, save_format=args.save_format, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id, overwrite_existing=args.overwrite_existing)
 
         if args.extract_features:
-            extract_features(dataset, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id)
+            extract_features(dataset, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id, overwrite_existing=args.overwrite_existing)
 
         if args.reconstruct_midi:
-            recon_midi(dataset, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id)
+            recon_midi(dataset, verbose=args.verbose, num_processes=args.num_processes, num_shards=args.num_shards, shard_id=shard_id, overwrite_existing=args.overwrite_existing)
 
         # clean up files in synth/ for this shard, so disk doesn't blow up
         print(f"Cleaning up files in synth/ for shard {shard_id}")
