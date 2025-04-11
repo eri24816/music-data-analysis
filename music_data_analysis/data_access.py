@@ -81,10 +81,12 @@ def read_pianoroll(
     dataset_path: Path,
     song_name: str,
     prop_name: str,
-    frames_per_beat: int | None = None,
+    frames_per_beat: int = 8,
 ) -> Pianoroll:
     prop_file = get_old_file_path(dataset_path, song_name, prop_name)
-    return Pianoroll.load(prop_file, frames_per_beat=frames_per_beat)
+    pr = Pianoroll.load(prop_file, frames_per_beat=frames_per_beat)
+    pr.metadata.name = song_name
+    return pr
 
 
 def write_pianoroll(
@@ -92,6 +94,20 @@ def write_pianoroll(
 ):
     prop_file = get_new_file_path(dataset_path, song_name, prop_name, "json")
     pianoroll.save(prop_file)
+
+
+def read_pt(dataset_path: Path, song_name: str, prop_name: str) -> Any:
+    import torch
+
+    prop_file = get_old_file_path(dataset_path, song_name, prop_name)
+    return torch.load(prop_file, map_location=torch.device("cpu"))
+
+
+def write_pt(dataset_path: Path, song_name: str, prop_name: str, data: Any):
+    import torch
+
+    prop_file = get_new_file_path(dataset_path, song_name, prop_name, "pt")
+    torch.save(data, prop_file)
 
 
 def hash_consistent(song_name: str) -> int:
@@ -206,12 +222,18 @@ class Dataset:
         write_midi(self.dataset_path, song_name, prop_name, midi)
 
     def read_pianoroll(
-        self, song_name: str, prop_name: str, frames_per_beat: int | None = None
+        self, song_name: str, prop_name: str, frames_per_beat: int = 8
     ) -> Pianoroll:
         return read_pianoroll(self.dataset_path, song_name, prop_name, frames_per_beat)
 
     def write_pianoroll(self, song_name: str, prop_name: str, pianoroll: Pianoroll):
         write_pianoroll(self.dataset_path, song_name, prop_name, pianoroll)
+
+    def read_pt(self, song_name: str, prop_name: str) -> Any:
+        return read_pt(self.dataset_path, song_name, prop_name)
+
+    def write_pt(self, song_name: str, prop_name: str, data: Any):
+        write_pt(self.dataset_path, song_name, prop_name, data)
 
     def __len__(self):
         return self.length
@@ -245,9 +267,7 @@ class Song:
     def write_midi(self, prop_name: str, midi: MidiFile):
         self.dataset.write_midi(self.song_name, prop_name, midi)
 
-    def read_pianoroll(
-        self, prop_name: str, frames_per_beat: int | None = None
-    ) -> Pianoroll:
+    def read_pianoroll(self, prop_name: str, frames_per_beat: int = 8) -> Pianoroll:
         return self.dataset.read_pianoroll(self.song_name, prop_name, frames_per_beat)
 
     def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
