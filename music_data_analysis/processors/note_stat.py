@@ -3,14 +3,14 @@ from ..data_access import Song
 from ..data.pianoroll import Pianoroll
 
 
-class NoteDensityProcessor(Processor):
+class DensityProcessor(Processor):
     input_props = ["pianoroll"]
-    output_props = ["note_density"]
+    output_props = ["density"]
 
     def process_impl(self, song: Song):
         pianoroll = Pianoroll.load(song.get_old_path("pianoroll"))
-        note_density = pianoroll.get_density()
-        song.write_json("note_density", note_density)
+        density = pianoroll.get_density()
+        song.write_json("density", density)
 
 
 class PolyphonyProcessor(Processor):

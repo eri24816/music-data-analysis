@@ -52,13 +52,13 @@ def read_json(dataset_path: Path, song_name: str, prop_name: str) -> Any:
     return json.loads(prop_file.read_text())
 
 
-EMPTY = object()
+UNSET = object()
 
 
 def write_json(
-    dataset_path: Path, song_name: str, prop_name: str, data_: Any = EMPTY, **kwargs
+    dataset_path: Path, song_name: str, prop_name: str, data_: Any = UNSET, **kwargs
 ):
-    if data_ is EMPTY:
+    if data_ is UNSET:
         data = kwargs
     else:
         data = data_
@@ -212,7 +212,7 @@ class Dataset:
             return self.manifest["properties"][prop_name][song_name]
         return read_json(self.dataset_path, song_name, prop_name)
 
-    def write_json(self, song_name: str, prop_name: str, data_: Any = EMPTY, **kwargs):
+    def write_json(self, song_name: str, prop_name: str, data_: Any = UNSET, **kwargs):
         write_json(self.dataset_path, song_name, prop_name, data_, **kwargs)
 
     def read_midi(self, song_name: str, prop_name: str) -> MidiFile:
@@ -244,6 +244,9 @@ class Song:
         self.dataset = dataset
         self.song_name = song_name
 
+    def get_segment(self, start: int, end: int, frames_per_beat: int = 8):
+        return SongSegment(self, start, end, frames_per_beat)
+
     def exists(self, prop_name: str) -> bool:
         return self.dataset.exists(self.song_name, prop_name)
 
@@ -258,7 +261,7 @@ class Song:
     def read_json(self, prop_name: str) -> Any:
         return self.dataset.read_json(self.song_name, prop_name)
 
-    def write_json(self, prop_name: str, data_: Any = EMPTY, **kwargs):
+    def write_json(self, prop_name: str, data_: Any = UNSET, **kwargs):
         self.dataset.write_json(self.song_name, prop_name, data_, **kwargs)
 
     def read_midi(self, prop_name: str) -> MidiFile:
@@ -273,27 +276,33 @@ class Song:
     def write_pianoroll(self, prop_name: str, pianoroll: Pianoroll):
         self.dataset.write_pianoroll(self.song_name, prop_name, pianoroll)
 
-    
+
     def read_pt(self, prop_name: str) -> Any:
         return self.dataset.read_pt(self.song_name, prop_name)
-    
+
     def write_pt(self, prop_name: str, data: Any):
         self.dataset.write_pt(self.song_name, prop_name, data)
-    
+
 
 class SongSegment:
     # TODO: unhardcode this
     _hardcoded_granularity_in_beats = {
         "chords": 1,
-        "note_density": 4,
+        "density": 4,
         "pitch": 4,
         "polyphony": 4,
         "velocity": 4,
     }
 
-    def __init__(
-        self, song: Song, start: int, end: int, frames_per_beat: int | None = None
-    ):
+    _hardcoded_pad_value = {
+        "chords": "None",
+        "density": 0,
+        "pitch": 0,
+        "polyphony": 0,
+        "velocity": 0,
+    }
+
+    def __init__(self, song: Song, start: int, end: int, frames_per_beat: int = 8):
         self.song = song
         self.start = start
         self.end = end
@@ -315,21 +324,59 @@ class SongSegment:
         self,
         prop_name: str,
         granularity: int | None = None,
-        pad_to: int = 0,
-        pad_value: Any = 0,
-    ):
+        pad_value: Any = UNSET,
+    )-> Any:
+        if pad_value is UNSET:
+            if prop_name in self._hardcoded_pad_value:
+                pad_value = self._hardcoded_pad_value[prop_name]
+            else:
+                raise ValueError(
+                    f"Please provide pad_value for this property: {prop_name}"
+                )
+
+        if granularity is None:
+            granularity = (
+                self._hardcoded_granularity_in_beats[prop_name] * self.frames_per_beat
+            )
+
+        def get_prop_slice(prop_list: list[Any]) -> list[Any]:
+            start_idx = self.start // granularity
+            end_idx = self.end // granularity
+
+            left_pad = 0
+            right_pad = 0
+
+            if start_idx < 0:
+                left_pad = -start_idx
+                start_idx = 0
+
+            if end_idx > len(prop_list):
+                right_pad = end_idx - len(prop_list)
+                end_idx = len(prop_list)
+
+            return (
+                [pad_value] * left_pad
+                + prop_list[start_idx:end_idx]
+                + [pad_value] * right_pad
+            )
+
         j = self.song.read_json(prop_name)
         if isinstance(j, list):
-            unpadded = j[self.start // granularity : self.end // granularity]
-            if pad_to:
-                return unpadded + [pad_value] * (pad_to - len(unpadded))
-            else:
-                return unpadded
+            result = get_prop_slice(j)
+            return result
         else:
             assert isinstance(j, dict)
             result = {}
             for k, v in j.items():
-                result[k] = v[self.start // granularity : self.end // granularity]
-                if pad_to:
-                    result[k] += [pad_value] * (pad_to - len(result[k]))
+                result[k] = get_prop_slice(v)
             return result
+
+    def read_pianoroll(self, prop_name: str, frames_per_beat: int = 8) -> Pianoroll:
+        return self.song.read_pianoroll(prop_name, frames_per_beat).slice(
+            self.start, self.end
+        )
+
+    def read_pt(self, prop_name: str, granularity: int = 32) -> Any:
+        return self.song.read_pt(prop_name)[
+            self.start // granularity : self.end // granularity
+        ]

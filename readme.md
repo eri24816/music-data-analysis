@@ -56,7 +56,7 @@ dataset_dir/
     key/
         piece1.json
         piece2.json
-    note_density/
+    density/
         piece1.json
         piece2.json
     ...
@@ -80,7 +80,7 @@ pianoroll = songs[0].read_pianoroll("pianoroll") # music_data_analysis.Pianoroll
 key = songs[0].read_json("key") # dict
 
 # Get note density of the first song
-note_density = songs[0].read_json("note_density") # list[float], one value per bar
+density = songs[0].read_json("density") # list[float], one value per bar
 
 # Get song by name
 song = dataset.get_song("piece1") # music_data_analysis.Song

@@ -12,7 +12,7 @@ from .data_access import Dataset
 from .processors.pianoroll import PianoRollProcessor
 from .processors.duration import DurationProcessor
 from .processors.pitch import PitchProcessor
-from .processors.note_stat import NoteDensityProcessor
+from .processors.note_stat import DensityProcessor
 from .processors.note_stat import PolyphonyProcessor
 from .processors.note_stat import VelocityProcessor
 from .processors.chord import ChordProcessor
@@ -45,7 +45,7 @@ def extract_features(dataset: Dataset, verbose=True, num_processes: int = 1, num
     procs = [
         DurationProcessor(),
         PitchProcessor(),
-        NoteDensityProcessor(),
+        DensityProcessor(),
         PolyphonyProcessor(),
         VelocityProcessor(),
         ChordProcessor(),
