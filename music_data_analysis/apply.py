@@ -10,7 +10,7 @@ def check_song_should_be_processed(song: Song, processor: Processor) -> bool:
     if processor.input_props is not None:
         for input_prop in processor.input_props:
             if not song.exists(input_prop):
-                raise FileNotFoundError(f"File {input_prop} not found for song {song.song_name}. It is required by {self.__class__.__name__}")
+                raise FileNotFoundError(f"File {input_prop} not found for song {song.song_name}. It is required by {processor.__class__.__name__}")
             
     if processor.output_props is not None:
         all_output_props_exist = True

@@ -1,9 +1,12 @@
 import json
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from functools import lru_cache
 from miditoolkit import MidiFile
+
+if TYPE_CHECKING:
+    from music_data_analysis.processor import Processor
 
 from .data.pianoroll import Pianoroll
 
@@ -237,7 +240,14 @@ class Dataset:
 
     def __len__(self):
         return self.length
-
+    
+    def apply_processor(self, processor: 'Processor', num_processes: int = 1, verbose=True, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
+        '''
+        Apply a `Processor` to each song in the `Dataset`. Single process by default.
+        '''
+        from music_data_analysis.apply import apply_to_dataset
+        apply_to_dataset(self, processor, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
+        
 
 class Song:
     def __init__(self, dataset: Dataset, song_name: str):
