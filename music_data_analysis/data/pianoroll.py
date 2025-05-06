@@ -80,7 +80,7 @@ class Note:
 
 @dataclass
 class PRMetadata:
-    name: str = ""
+    name: str = "(unnamed)"
     start_time: int = 0
     end_time: int = 0
 
@@ -104,6 +104,13 @@ class Pianoroll:
     Pianoroll is preferred over midi in case for minimal file size and easy to manipulate.
     """
 
+
+    @classmethod
+    def cat(cls, pianorolls: list["Pianoroll"]) -> "Pianoroll":
+        result = pianorolls[0]
+        for pr in pianorolls[1:]:
+            result |= pr
+        return result
 
 
     def __init__(self, notes: list[Note], pedal: list[int]|None=None, beats_per_bar: int=4, frames_per_beat: int=8, duration: int|None=None, metadata: PRMetadata|None=None):
@@ -134,7 +141,7 @@ class Pianoroll:
         self._have_offset = len(self.notes) == 0 or self.notes[0].offset is not None
 
         if metadata is None:
-            self.metadata = PRMetadata("", 0, self.duration)
+            self.metadata = PRMetadata(name="(unnamed)", start_time=0, end_time=self.duration)
         else:
             self.metadata = metadata
 
@@ -330,7 +337,8 @@ class Pianoroll:
             for note in notes:
                 note.onset = int(round(note.onset * frames_per_beat_scale))
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
-        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, serialized.duration, serialized.metadata)
+        duration = int(ceil(serialized.duration * frames_per_beat_scale))
+        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, serialized.metadata)
 
     @staticmethod
     def load_torch(path: Path, frames_per_beat: int|None=None) -> "Pianoroll":
@@ -359,12 +367,17 @@ class Pianoroll:
             for note in notes:
                 note.onset = int(round(note.onset * frames_per_beat_scale))
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
-            duration = int(round(serialized.duration * frames_per_beat_scale))
+            duration = int(ceil(serialized.duration * frames_per_beat_scale))
+            metadata = serialized.metadata
+            metadata.start_time = int(round(metadata.start_time * frames_per_beat_scale))
+            metadata.end_time = int(round(metadata.end_time * frames_per_beat_scale))
         else:
             duration = serialized.duration
             frames_per_beat = serialized.frames_per_beat
+            metadata = serialized.metadata
 
-        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, serialized.metadata)
+
+        return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, metadata)
 
     """
     ==================
@@ -636,28 +649,44 @@ class Pianoroll:
             self._save_to_midi([left_hand], path + "_left.mid")
             self._save_to_midi([right_hand], path + "_right.mid")
 
-    def to_img(self, path):
+    def to_img(self, path, size_factor: int = 1, annotations: list[tuple[int, str]] = []):
         """
         Convert the pianoroll to a image
         """
+
+        def create_fig_with_size(w:int, h:int, dpi:int = 100):
+            fig = plt.figure(figsize=(w/dpi, h/dpi), dpi=dpi)
+            ax = plt.Axes(fig, [0, 0, 1, 1])  # use full figure area
+            ax.set_axis_off()
+            fig.add_axes(ax)
+            return fig, ax
+
         img = np.zeros((88, self.duration))
         for time, pitch, vel, offset in self.iter_over_notes_unpack():
+            if time >= self.duration:
+                print("Warning: time >= duration") #TODO: fix this
+                continue
             img[pitch - 21, time] = vel
         # enlarge the image
-        img = np.repeat(img, 2, axis=0)
-        img = np.repeat(img, 2, axis=1)
+        img = np.repeat(img, size_factor, axis=0)
+        img = np.repeat(img, size_factor, axis=1)
 
         # add bar lines
         for t in range(self.duration):
             if t % self.frames_per_bar == 0:
-                img[:, t * 2] += 20
+                img[:, t * size_factor] += 20
 
         # inverse y
         img = np.flip(img, axis=0)
 
-        plt.imsave(path, img, vmin=0, vmax=127)
+        fig, ax = create_fig_with_size(img.shape[1], img.shape[0])
+        ax.imshow(img, vmin=0, vmax=127)
+        for t, text in annotations:
+            ax.text(t * size_factor+3, 3, text, ha='left', va='top', fontsize=12)
+        fig.savefig(path)
+        plt.close()
 
-    def to_img_tensor(self):
+    def to_img_tensor(self, size_factor: int = 1):
         """
         Convert the pianoroll to a image tensor
         """
@@ -665,12 +694,12 @@ class Pianoroll:
         for time, pitch, vel, offset in self.iter_over_notes_unpack():
             img[pitch - 21, time] = vel
         # enlarge the image
-        img = img.repeat_interleave(2, dim=0).repeat_interleave(2, dim=1)
+        img = img.repeat_interleave(size_factor, dim=0).repeat_interleave(size_factor, dim=1)
 
         # add bar lines
         for t in range(self.duration):
             if t % self.frames_per_bar == 0:
-                img[:, t * 2] += 20
+                img[:, t * size_factor] += 20
 
         # inverse y
         img = torch.flip(img, dims=(0,))
@@ -690,10 +719,21 @@ class Pianoroll:
     ==================
     """
 
-    def slice(self, start_time: int = 0, end_time: int = INF) -> "Pianoroll":
+    def __getitem__(self, slice: slice) -> "Pianoroll":
         """
         Slice a pianoroll from start_time to end_time
         """
+        assert slice.step is None, "Step is not supported"
+        return self.slice(slice.start, slice.stop)
+
+    def slice(self, start_time: int | None = None, end_time: int | None = None) -> "Pianoroll":
+        """
+        Slice a pianoroll from start_time to end_time
+        """
+        if start_time is None:
+            start_time = 0
+        if end_time is None:
+            end_time = self.duration
         if end_time < start_time:
             raise ValueError("end_time must be greater than start_time")
         length = end_time - start_time
@@ -865,7 +905,7 @@ class Pianoroll:
         '''
         assert self.beats_per_bar == other.beats_per_bar, "Beats per bar must be the same when adding two pianorolls"
         assert self.frames_per_beat == other.frames_per_beat, "Frames per beat must be the same when adding two pianorolls"
-        notes = self.notes + other.notes
+        notes = self.notes.copy() + other.notes.copy()
         notes = sorted(notes, key=lambda x: x.onset) # sort by onset
         duration = max(self.duration, other.duration)
         return Pianoroll(notes, self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, duration)

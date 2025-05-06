@@ -11,17 +11,17 @@ def check_song_should_be_processed(song: Song, processor: Processor) -> bool:
         for input_prop in processor.input_props:
             if not song.exists(input_prop):
                 raise FileNotFoundError(f"File {input_prop} not found for song {song.song_name}. It is required by {processor.__class__.__name__}")
-            
+
     if processor.output_props is not None:
         all_output_props_exist = True
-    
+
         for output_prop in processor.output_props:
             if not song.exists(output_prop):
                 all_output_props_exist = False
                 break
         if all_output_props_exist:
             return False
-        
+
         for output_prop in processor.output_props:
             song.get_new_path(output_prop).parent.mkdir(parents=True, exist_ok=True)
 
@@ -34,7 +34,7 @@ def apply_to_dataset(dataset: Dataset, processor: Processor, num_processes: int 
 
     if num_processes > processor.max_num_processes:
         num_processes = processor.max_num_processes
-        
+
     if num_processes == 1:
         apply_to_dataset_single_proc(dataset, processor, verbose, num_shards, shard_id, overwrite_existing)
     else:
@@ -58,11 +58,10 @@ def process_init(processor_: Processor):
 def process_task(song):
     global processor
     try:
-        if check_song_should_be_processed(song, processor):
-            processor.process(song)
+        processor.process(song)
     except Exception:
         traceback.print_exc()
-    
+
 def sigint_handler(sig, frame):
     print("SIGINT received, terminating processes")
     time.sleep(1)
@@ -79,6 +78,7 @@ def apply_to_dataset_multi_proc(
         n_skipped = 0
         for song in pbar:
             if check_song_should_be_processed(song, processor) or overwrite_existing:
+                pbar.set_postfix(song=song.song_name)
                 yield song
             else:
                 n_skipped += 1
@@ -105,6 +105,7 @@ def apply_to_dataset_single_proc(dataset: Dataset, processor: Processor, verbose
     n_skipped = 0
     for song in iterable:
         if check_song_should_be_processed(song, processor) or overwrite_existing:
+            iterable.set_postfix(song=song.song_name)
             processor.process(song)
         else:
             n_skipped += 1
