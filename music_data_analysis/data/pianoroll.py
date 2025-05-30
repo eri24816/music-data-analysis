@@ -6,7 +6,7 @@ from io import BytesIO
 import itertools
 from pathlib import Path
 import random
-from typing import Any, Generator, Literal, Sequence, Tuple, TypeVar, Generic
+from typing import Any, Generator, Iterator, Literal, Sequence, Tuple, TypeVar, Generic
 from matplotlib import pyplot as plt
 import numpy as np
 from math import ceil
@@ -83,6 +83,10 @@ class PRMetadata:
     name: str = "(unnamed)"
     start_time: int = 0
     end_time: int = 0
+
+    def copy(self):
+        return PRMetadata(self.name, self.start_time, self.end_time)
+
 
 NotesType = TypeVar("NotesType", bound=Sequence[tuple[int,int,int,int|None]]|torch.Tensor)
 @dataclass
@@ -476,17 +480,20 @@ class Pianoroll:
             midi = path_or_file
 
         notes: list[Note] = []
-        if len(midi.instruments) > 0:
-            for note in midi.instruments[0].notes:
-                note: miditoolkit.Note
-                notes.append(
-                    Note(
-                        int(round(note.start * frames_per_beat / midi.ticks_per_beat)),
-                        note.pitch,
-                        note.velocity,
-                        int(round(note.end * frames_per_beat / midi.ticks_per_beat)),
-                    )
-                )
+        miditookit_notes: Iterator[miditoolkit.Note] = itertools.chain(*[i.notes for i in midi.instruments])
+        for note in miditookit_notes:
+            
+            new_note = Note(
+                int(round(note.start * frames_per_beat / midi.ticks_per_beat)),
+                note.pitch,
+                note.velocity,
+                int(round(note.end * frames_per_beat / midi.ticks_per_beat)),
+            )
+            if new_note.offset == new_note.onset:
+                new_note.offset = new_note.onset + 1
+            notes.append(
+                new_note
+            )
         pr = Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
         if name is None and isinstance(path_or_file, Path):
             name = path_or_file.stem
@@ -494,7 +501,7 @@ class Pianoroll:
         return pr
 
     def to_midi(
-        self, path=None, apply_pedal=True, bpm=105
+        self, path=None, apply_pedal=True, bpm=105, markers: list[tuple[int, str]] = []
     ) -> miditoolkit.MidiFile:
         """
         Convert the pianoroll to a midi file. Returns a miditoolkit.MidiFile object
@@ -518,9 +525,9 @@ class Pianoroll:
                 note.offset = offsets[i]
         else:
             assert self._have_offset, "Offset not found"
-        return self._save_to_midi([notes], path, bpm)
+        return self._save_to_midi([notes], path, bpm, markers)
 
-    def _save_to_midi(self, instrs, path, bpm=105):
+    def _save_to_midi(self, instrs, path, bpm=105, markers: list[tuple[int, str]] = []):
         midi = miditoolkit.MidiFile()
         midi.instruments = [
             miditoolkit.Instrument(program=0, is_drum=False, name=f"Piano{i}")
@@ -538,6 +545,8 @@ class Pianoroll:
                         int(offset * midi.ticks_per_beat / self.frames_per_beat),
                     )
                 )
+        for time, text in markers:
+            midi.markers.append(miditoolkit.Marker(text, int(time * midi.ticks_per_beat / self.frames_per_beat)))
         if path:
             midi.dump(path)
         return midi
@@ -686,13 +695,17 @@ class Pianoroll:
         fig.savefig(path)
         plt.close()
 
-    def to_img_tensor(self, size_factor: int = 1):
+    def to_img_tensor(self, size_factor: int = 1, plot_sustain: bool = False):
         """
         Convert the pianoroll to a image tensor
         """
         img = torch.zeros((88, self.duration))
-        for time, pitch, vel, offset in self.iter_over_notes_unpack():
-            img[pitch - 21, time] = vel
+        if plot_sustain:
+            for time, pitch, vel, offset in self.iter_over_notes_unpack():
+                img[pitch - 21, time:offset] = vel
+        else:
+            for time, pitch, vel, offset in self.iter_over_notes_unpack():
+                img[pitch - 21, time] = vel
         # enlarge the image
         img = img.repeat_interleave(size_factor, dim=0).repeat_interleave(size_factor, dim=1)
 
@@ -736,6 +749,10 @@ class Pianoroll:
             end_time = self.duration
         if end_time < start_time:
             raise ValueError("end_time must be greater than start_time")
+        if start_time < 0:
+            raise ValueError("start_time must be greater than 0")
+        if end_time > self.duration:
+            raise ValueError("end_time must be less than duration")
         length = end_time - start_time
         sliced_notes: list[Note] = []
         for time, pitch, vel, offset in self.iter_over_notes_unpack():
@@ -897,7 +914,7 @@ class Pianoroll:
         return lowest_pitch
 
     def copy(self):
-        return Pianoroll(self.notes.copy(), self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, self.duration)
+        return Pianoroll(deepcopy(self.notes), self.pedal.copy() if self.pedal else None, self.beats_per_bar, self.frames_per_beat, self.duration, self.metadata.copy())
 
     def __add__(self, other: "Pianoroll"):
         '''
