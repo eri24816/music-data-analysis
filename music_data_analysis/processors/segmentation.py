@@ -51,80 +51,57 @@ def get_overlap_sim(a: Pianoroll, b: Pianoroll):
         num_overlaps_list.append(num_overlaps)
     return max(num_overlaps_list)
 
-
-def get_skyline(pr: Pianoroll, radius=1):
-    result: list[Note] = []
-    for i, bar in enumerate(pr.iter_over_bars_pr()):
-        res_bar = get_skyline_bar(bar, radius)
-        for note in res_bar:
-            note.onset += i * 32
-            result.append(note)
-    return result
-
-
-def get_skyline_bar(pr: Pianoroll, radius=1):
-    skyline: list[Note] = []
-
-    covered = [False] * pr.duration
+def get_skyline(pr: Pianoroll, max_slope:float=1, intercept:float=0):
+    '''
+    max_slope: octaves per beat
+    '''
     notes = pr.notes
-    notes = sorted(notes, key=lambda x: -x.pitch)
-    sum_skyline_vel = 0
-    sum_skyline_pitch = 0
-    max_skyline_pitch = 0
-    max_avg_num = 7
 
-    for note in notes:
-        if covered[note.onset]:
-            continue
+    max_slope_semitones_per_frame = max_slope * 12 / pr.frames_per_beat
 
-        if len(skyline) > 0:
-            avg_vel = sum_skyline_vel / min(len(skyline), max_avg_num)
-            vel_score = note.velocity - avg_vel
-            avg_pitch = sum_skyline_pitch / min(len(skyline), max_avg_num)
-            pitch_score = note.pitch - avg_pitch
+    # filter notes that on top of each frame
 
-            score = vel_score + pitch_score * 1.5
+    result1 = []
+    for i in range(len(notes)-1):
+        if notes[i].onset != notes[i+1].onset:
+            result1.append(notes[i])
+    result1.append(notes[-1])
 
-            if score < -35:
-                continue
+    result2: list[Note] = []
+    last_onset = -2147483648
+    last_pitch = 0
+    for note in result1:
+        if (note.pitch - last_pitch + intercept) / (note.onset - last_onset) >= -max_slope_semitones_per_frame:
+            result2.append(note.copy())
+            last_onset = note.onset
+            last_pitch = note.pitch
 
-            if note.pitch < max_skyline_pitch - 12:
-                continue
+    result3: list[Note] = []
+    last_onset = 2147483647
+    last_pitch = 0
+    for note in reversed(result2):
+        if (note.pitch - last_pitch + intercept) / (last_onset - note.onset) >= -max_slope_semitones_per_frame:
+            result3.append(note.copy())
+            last_onset = note.onset
+            last_pitch = note.pitch
 
-        if len(skyline) < max_avg_num:
-            sum_skyline_vel += note.velocity
-            sum_skyline_pitch += note.pitch
-            max_skyline_pitch = max(max_skyline_pitch, note.pitch)
-
-            skyline.append(note)
-
-        for i in range(note.onset - radius, note.onset + radius + 1):
-            if i < 0 or i >= pr.duration:
-                continue
-            covered[i] = True
-
-    skyline = sorted(skyline, key=lambda x: x.onset)
-    return skyline
-
-
-def get_skyline_sim(a: Pianoroll, b: Pianoroll):
-    a_skyline = get_skyline(a)
-    b_skyline = get_skyline(b)
-    return get_overlap_sim(Pianoroll(a_skyline), Pianoroll(b_skyline))
-
-
+    result3.reverse()
+    
+    return Pianoroll(result3, beats_per_bar=pr.beats_per_bar, frames_per_beat=pr.frames_per_beat, duration=pr.duration)
+    
 class SegmentationProcessor(Processor):
     input_props = ["pianoroll"]
     output_props = ["segmentation"]
 
     def process_impl(self, song: Song):
         pr = song.read_pianoroll("pianoroll", frames_per_beat=8)
+        skyline = get_skyline(pr)
         mat = torch.zeros((pr.duration // 32, pr.duration // 32))
         for i in range(pr.duration // 32):
             for j in range(i, pr.duration // 32):
                 sim = (
-                    get_skyline_sim(
-                        pr.slice(i * 32, (i + 1) * 32), pr.slice(j * 32, (j + 1) * 32)
+                    get_overlap_sim(
+                        skyline.slice(i * 32, (i + 1) * 32), skyline.slice(j * 32, (j + 1) * 32)
                     )
                     * 0.5
                     + get_overlap_sim(
@@ -146,9 +123,6 @@ class SegmentationProcessor(Processor):
         A = mat_clamped * (1 - adj_weight) + adj_weight * adj
         D = torch.diag(A.sum(dim=1))
         L = D - A
-        # Using matrix square root manually since torch.linalg doesn't have sqrtm
-        # D_sqrt_inv = torch.diag(torch.pow(torch.diag(D), -0.5))
-        # L = torch.eye(A.shape[0]) - D_sqrt_inv @ A @ D_sqrt_inv
 
         # Extract the first k eigenvectors of the Laplacian (smallest eigenvalues):
         k = 5
