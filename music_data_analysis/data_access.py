@@ -240,14 +240,14 @@ class Dataset:
 
     def __len__(self):
         return self.length
-    
+
     def apply_processor(self, processor: 'Processor', num_processes: int = 1, verbose=True, num_shards: int = 1, shard_id: int = 0, overwrite_existing: bool = False):
         '''
         Apply a `Processor` to each song in the `Dataset`. Single process by default.
         '''
         from music_data_analysis.apply import apply_to_dataset
         apply_to_dataset(self, processor, num_processes=num_processes, verbose=verbose, num_shards=num_shards, shard_id=shard_id, overwrite_existing=overwrite_existing)
-        
+
 
 class Song:
     def __init__(self, dataset: Dataset, song_name: str):
@@ -383,7 +383,7 @@ class SongSegment:
 
     def read_pianoroll(self, prop_name: str, frames_per_beat: int = 8) -> Pianoroll:
         return self.song.read_pianoroll(prop_name, frames_per_beat).slice(
-            self.start, self.end
+            self.start, self.end, allow_out_of_range=True
         )
 
     def read_pt(self, prop_name: str, granularity: int = 32) -> Any:

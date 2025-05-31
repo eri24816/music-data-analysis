@@ -77,6 +77,9 @@ class Note:
     def __eq__(self, other):
         return self.onset == other.onset and self.pitch == other.pitch and self.velocity == other.velocity and self.offset == other.offset
 
+    def __hash__(self):
+        return hash((self.onset, self.pitch, self.velocity, self.offset))
+
 
 @dataclass
 class PRMetadata:
@@ -327,6 +330,12 @@ class Pianoroll:
             pr = Pianoroll.load_torch(path, frames_per_beat)
         else:
             raise ValueError(f"Invalid file extension: {path.suffix}")
+
+        # ensure offset > onset
+        for note in pr.notes:
+            if note.offset is not None and note.offset <= note.onset:
+                note.offset = note.onset + 1
+
         return pr
 
     @staticmethod
@@ -482,7 +491,7 @@ class Pianoroll:
         notes: list[Note] = []
         miditookit_notes: Iterator[miditoolkit.Note] = itertools.chain(*[i.notes for i in midi.instruments])
         for note in miditookit_notes:
-            
+
             new_note = Note(
                 int(round(note.start * frames_per_beat / midi.ticks_per_beat)),
                 note.pitch,
@@ -501,7 +510,7 @@ class Pianoroll:
         return pr
 
     def to_midi(
-        self, path=None, apply_pedal=True, bpm=105, markers: list[tuple[int, str]] = []
+        self, path=None, apply_pedal=False, bpm=105, markers: list[tuple[int, str]] = []
     ) -> miditoolkit.MidiFile:
         """
         Convert the pianoroll to a midi file. Returns a miditoolkit.MidiFile object
@@ -739,7 +748,7 @@ class Pianoroll:
         assert slice.step is None, "Step is not supported"
         return self.slice(slice.start, slice.stop)
 
-    def slice(self, start_time: int | None = None, end_time: int | None = None) -> "Pianoroll":
+    def slice(self, start_time: int | None = None, end_time: int | None = None, allow_out_of_range: bool = False) -> "Pianoroll":
         """
         Slice a pianoroll from start_time to end_time
         """
@@ -749,10 +758,11 @@ class Pianoroll:
             end_time = self.duration
         if end_time < start_time:
             raise ValueError("end_time must be greater than start_time")
-        if start_time < 0:
-            raise ValueError("start_time must be greater than 0")
-        if end_time > self.duration:
-            raise ValueError("end_time must be less than duration")
+        if not allow_out_of_range:
+            if start_time < 0:
+                raise ValueError("start_time must be greater than 0")
+            if end_time > self.duration:
+                raise ValueError("end_time must be less than or equal to duration")
         length = end_time - start_time
         sliced_notes: list[Note] = []
         for time, pitch, vel, offset in self.iter_over_notes_unpack():
