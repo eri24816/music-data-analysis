@@ -1,4 +1,5 @@
-# generate manifest.json for a dataset
+# generate manifest.json for a dataset 
+# python manifest.py <dataset_path> <property1> <property2> ...
 
 import json
 from pathlib import Path
@@ -9,8 +10,8 @@ from music_data_analysis import Dataset
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=Path, help="Path to the dataset directory")
-    parser.add_argument("--props", type=str, nargs="+", default=[], help="properties to include in the manifest. Only json formatted properties are supported.")
+    parser.add_argument("dataset_path", type=Path, help="Path to the dataset directory")
+    parser.add_argument("props", type=str, nargs="+", default=[], help="properties to include in the manifest. Only json formatted properties are supported.")
     args = parser.parse_args()
 
     ds = Dataset(args.dataset_path, args.props[0] if len(args.props) > 0 else 'midi')

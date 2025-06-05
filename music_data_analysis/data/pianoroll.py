@@ -105,6 +105,28 @@ class PianorollSerialized(Generic[NotesType]):
 if HAS_TORCH and hasattr(torch.serialization, 'add_safe_globals'):
     torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
 
+def clear_duplicate_notes(notes: list[Note]) -> list[Note]:
+    # often happens when loading data with larger quantization
+    current_onset = -1
+    current_pitch = -1
+
+    note_idx_to_remove = []
+    for note_idx, note in enumerate(notes):
+        print(note, note.onset, note.pitch, current_onset, current_pitch)
+        if note.onset == current_onset and note.pitch == current_pitch:
+            note_idx_to_remove.append(note_idx)
+        else:
+            current_onset = note.onset
+            current_pitch = note.pitch
+
+    # we do it lazily because it rarely happens
+    if len(note_idx_to_remove) > 0:
+        return [note for note_idx, note in enumerate(notes) if note_idx not in note_idx_to_remove]
+    return notes
+
+def sort_notes(notes: list[Note]) -> list[Note]:
+    return sorted(notes, key=lambda x: x.onset*1000000 + x.pitch)
+
 class Pianoroll:
     """
     Pianoroll class is a representation of music, which is a sequence of notes. Each note has onset, pitch, velocity, and offset (offset is optional).
@@ -351,6 +373,8 @@ class Pianoroll:
                 note.onset = int(round(note.onset * frames_per_beat_scale))
                 note.offset = int(round(note.offset * frames_per_beat_scale)) if note.offset is not None else None
         duration = int(ceil(serialized.duration * frames_per_beat_scale))
+        notes = sort_notes(notes)
+        notes = clear_duplicate_notes(notes)
         return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, serialized.metadata)
 
     @staticmethod
@@ -388,6 +412,9 @@ class Pianoroll:
             duration = serialized.duration
             frames_per_beat = serialized.frames_per_beat
             metadata = serialized.metadata
+
+        notes = sort_notes(notes)
+        notes = clear_duplicate_notes(notes)
 
 
         return Pianoroll(notes, serialized.pedal, serialized.beats_per_bar, frames_per_beat, duration, metadata)
@@ -503,6 +530,9 @@ class Pianoroll:
             notes.append(
                 new_note
             )
+
+        notes = sort_notes(notes)
+        notes = clear_duplicate_notes(notes)
         pr = Pianoroll(notes, beats_per_bar=beats_per_bar, frames_per_beat=frames_per_beat)
         if name is None and isinstance(path_or_file, Path):
             name = path_or_file.stem
