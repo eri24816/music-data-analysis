@@ -112,7 +112,6 @@ def clear_duplicate_notes(notes: list[Note]) -> list[Note]:
 
     note_idx_to_remove = []
     for note_idx, note in enumerate(notes):
-        print(note, note.onset, note.pitch, current_onset, current_pitch)
         if note.onset == current_onset and note.pitch == current_pitch:
             note_idx_to_remove.append(note_idx)
         else:
