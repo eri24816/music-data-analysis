@@ -9,16 +9,13 @@ class AlignAndSyncProcessor(Processor):
     input_props = ["midi"] # Beats and key are optional so aren't listed here
     output_props = ["synced_midi"]
 
-    def __init__(self, align_midi: bool = True, sync_midi: bool = True, frames_per_beat: int|None=None):
-        if sync_midi and frames_per_beat is None:
-            raise ValueError("frames_per_beat must be provided if sync_midi is True")
+    def __init__(self, align_midi: bool = True, sync_midi: bool = True, frames_per_beat: int=16):
         self.align_midi = align_midi
         self.sync_midi = sync_midi
         self.frames_per_beat = frames_per_beat
 
     def process_impl(self, song: Song):
-        if song.exists("synced_midi"):
-            return
+
 
         midi = song.read_midi("midi")
 
@@ -39,13 +36,15 @@ def time2beat(beat_time, t):
         return None
     if t <= beat_time[0]:
         return 0
-    beat_time = list(beat_time) + [beat_time[-1] * 2 - beat_time[-2]]
+
     for beat, time in enumerate(beat_time):
         if time > t:
             start = beat_time[beat - 1]
             end = time
             res = beat - 1 + (t - start) / (end - start)
             return res
+    
+    return beat_time[-1]
 
 
 def align_midi(midi: miditoolkit.MidiFile, key: int) -> miditoolkit.MidiFile:
@@ -174,6 +173,12 @@ def sync_midi(midi: miditoolkit.MidiFile, beats: list, start_beat: int, time_res
         onsets.append(note.start)
 
     beats = snap_beats(beats, onsets, time_res)
+
+    # extrapolate beats so offsets can get their beat
+    slope = (beats[-1] - beats[-2])
+    for i in range(12):
+        beats.append(beats[-1] + slope)
+
     sec_per_tick = midi.get_tick_to_time_mapping()[1]
     for note in midi.instruments[0].notes:
         onset_beat = time2beat(beats, note.start * sec_per_tick)

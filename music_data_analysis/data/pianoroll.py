@@ -159,10 +159,7 @@ class Pianoroll:
             self.duration = duration
         else:
             if len(self.notes):
-                if self.notes[-1].offset is None:
-                    self.duration = ceil((self.notes[-1].onset + 1) / self.frames_per_bar) * self.frames_per_bar
-                else:
-                    self.duration = ceil((self.notes[-1].offset) / self.frames_per_bar) * self.frames_per_bar
+                self.duration = ceil((self.notes[-1].onset + 1) / self.frames_per_bar) * self.frames_per_bar
             else:
                 self.duration = 0
 
@@ -803,7 +800,7 @@ class Pianoroll:
 
             if offset is not None:
                 rel_offset = offset - start_time
-                rel_offset = min(rel_offset, length)
+                # rel_offset = min(rel_offset, length)
             else:
                 rel_offset = None
             # only contain notes between start_time and end_time
@@ -972,6 +969,8 @@ class Pianoroll:
         '''
         for note in self.notes:
             note.onset += frames
+            if note.offset is not None:
+                note.offset += frames
         if self.pedal:
             for i, pedal in enumerate(self.pedal):
                 self.pedal[i] += frames
