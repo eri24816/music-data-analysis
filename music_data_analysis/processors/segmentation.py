@@ -124,20 +124,25 @@ class SegmentationProcessor(Processor):
         pr = song.read_pianoroll("pianoroll", frames_per_beat=8)
         skyline = get_skyline(pr)
         mat = torch.zeros((pr.duration // 32, pr.duration // 32))
+
+        skyline_slices = list(skyline.iter_over_bars_pr())
+        pr_slices = list(pr.iter_over_bars_pr())
+
         for i in range(pr.duration // 32):
             for j in range(i, pr.duration // 32):
                 sim = (
                     get_overlap_sim(
-                        skyline.slice(i * 32, (i + 1) * 32), skyline.slice(j * 32, (j + 1) * 32)
+                        skyline_slices[i], skyline_slices[j]
                     )
                     * 0.5
                     + get_overlap_sim(
-                        pr.slice(i * 32, (i + 1) * 32), pr.slice(j * 32, (j + 1) * 32)
+                        pr_slices[i], pr_slices[j]
                     )
                     * 0.5
                 )
                 mat[i, j] = sim
                 mat[j, i] = sim
+
 
         # A is similarity matrix add adjacency matrix so we favor more connected bars
         adj = torch.zeros_like(mat)
