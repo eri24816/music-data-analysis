@@ -25,7 +25,11 @@ if __name__ == "__main__":
         print(f"Processing property: {prop}")
         manifest["properties"][prop] = {}
         for song in tqdm(ds.songs(), desc=f"Processing property: {prop}"):
-            manifest["properties"][prop][song.song_name] = song.read_json(prop)
+            try:
+                manifest["properties"][prop][song.song_name] = song.read_json(prop)
+            except Exception as e:
+                print(f"Error reading property {prop} for song {song.song_name}: {e}")
+                
 
     with open(args.dataset_path / "manifest.json", "w") as f:
         json.dump(manifest, f)

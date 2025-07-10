@@ -167,7 +167,7 @@ class SegmentationProcessor(Processor):
             labels = [0] * num_bars
         else:
             
-            max_k = num_bars // 8
+            max_k = min(num_bars // 8, 6)
             
             eigvals_sorted = torch.sort(eigvals.real)[0]
             eigval_diff = eigvals_sorted[1:] - eigvals_sorted[:-1]
