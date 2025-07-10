@@ -181,7 +181,7 @@ class Dataset:
                     file.relative_to(self.dataset_path / song_search_index).with_suffix(
                         ""
                     )
-                )
+                ).replace("\\", "/")
                 songs.append(Song(self, song_name))
 
         songs = [
