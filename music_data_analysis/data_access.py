@@ -142,12 +142,12 @@ class Dataset:
             self.length = self.manifest["num_songs"]
         else:
             self.manifest = None
-            if song_search_index is None:
-                song_search_index = "midi"
+            if self.song_search_index is None:
+                self.song_search_index = "midi"
             self.length = len(
                 [
                     f
-                    for f in list((dataset_path / song_search_index).glob("**/*"))
+                    for f in list((dataset_path / self.song_search_index).glob("**/*"))
                     if f.is_file()
                 ]
             )

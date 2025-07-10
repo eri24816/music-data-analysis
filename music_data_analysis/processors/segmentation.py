@@ -5,7 +5,6 @@ from music_data_analysis.processor import Processor
 from collections import defaultdict
 import torch
 
-import numpy as np
 from sklearn.cluster import KMeans
 
 
@@ -88,7 +87,35 @@ def get_skyline(pr: Pianoroll, max_slope:float=1, intercept:float=0):
     result3.reverse()
     
     return Pianoroll(result3, beats_per_bar=pr.beats_per_bar, frames_per_beat=pr.frames_per_beat, duration=pr.duration)
-    
+
+def calinski_harabasz_index(eigvecs, labels, k):
+    labels = torch.tensor(labels)
+    custer_centroids = []
+    for i in range(k):
+        custer_centroids.append(eigvecs[labels == i].mean(dim=0))
+    global_centroid = eigvecs.mean(dim=0)
+    bcss = 0
+    wcss = 0
+    for i in range(k):
+        bcss += (custer_centroids[i] - global_centroid).pow(2).sum()
+        wcss += (eigvecs[labels == i] - custer_centroids[i]).pow(2).sum()
+    return (bcss / (k - 1)) / (wcss / (len(eigvecs) - k))
+
+def get_max_segment_size(labels):
+    '''
+    example input: get_max_segment_size([0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 2, 0])
+    -> output: 5
+    '''
+    max_segment_size = 0
+    last_label = labels[0]
+    start_index = 0
+    for i in range(1, len(labels)):
+        if labels[i] != last_label:
+            max_segment_size = max(max_segment_size, i - start_index)
+            last_label = labels[i]
+            start_index = i
+    max_segment_size = max(max_segment_size, len(labels) - start_index)
+    return max_segment_size
 class SegmentationProcessor(Processor):
     input_props = ["pianoroll"]
     output_props = ["segmentation"]
@@ -97,49 +124,64 @@ class SegmentationProcessor(Processor):
         pr = song.read_pianoroll("pianoroll", frames_per_beat=8)
         skyline = get_skyline(pr)
         mat = torch.zeros((pr.duration // 32, pr.duration // 32))
+
+        skyline_slices = list(skyline.iter_over_bars_pr())
+        pr_slices = list(pr.iter_over_bars_pr())
+
         for i in range(pr.duration // 32):
             for j in range(i, pr.duration // 32):
                 sim = (
                     get_overlap_sim(
-                        skyline.slice(i * 32, (i + 1) * 32), skyline.slice(j * 32, (j + 1) * 32)
+                        skyline_slices[i], skyline_slices[j]
                     )
                     * 0.5
                     + get_overlap_sim(
-                        pr.slice(i * 32, (i + 1) * 32), pr.slice(j * 32, (j + 1) * 32)
+                        pr_slices[i], pr_slices[j]
                     )
                     * 0.5
                 )
                 mat[i, j] = sim
                 mat[j, i] = sim
 
-        ignores = []
+
         # A is similarity matrix add adjacency matrix so we favor more connected bars
         adj = torch.zeros_like(mat)
         adj.diagonal(0).fill_(1)  # Main diagonal
         adj.diagonal(1).fill_(1)  # Diagonal +1
         adj.diagonal(-1).fill_(1)  # Diagonal -1
         adj_weight = 0.7
-        mat_clamped = torch.clamp(mat, min=0.2)
+        mat_clamped = torch.clamp(mat, min=0.3)
         A = mat_clamped * (1 - adj_weight) + adj_weight * adj
         D = torch.diag(A.sum(dim=1))
         L = D - A
+        # D_sqrt_inv = torch.diag(torch.pow(torch.diag(D), -0.5))
+        # L = torch.eye(A.shape[0]) - D_sqrt_inv @ A @ D_sqrt_inv
 
-        # Extract the first k eigenvectors of the Laplacian (smallest eigenvalues):
-        k = 5
+        num_bars = mat.shape[0]
+
         eigvals, eigvecs = torch.linalg.eig(L)
-        eigvecs = eigvecs[:, torch.argsort(eigvals.real)[:k]]
-
-        if len(eigvals) < 16:
+        
+        if num_bars < 16:
             # too short. one segment
             split_points = []
-            labels = [0] * len(eigvals)
+            labels = [0] * num_bars
         else:
-            # remove the ignores
-            eigvecs = eigvecs[[i not in ignores for i in range(len(eigvecs))], :]
+            
+            max_k = min(num_bars // 8, 6)
+            
+            eigvals_sorted = torch.sort(eigvals.real)[0]
+            eigval_diff = eigvals_sorted[1:] - eigvals_sorted[:-1]
+            
+            eigval_diff[0]=0 # we don't consider k=1
+            
+            k = int((torch.argmax(eigval_diff[:max_k]) + 1))
+            
+            # Extract the first k eigenvectors of the Laplacian (smallest eigenvalues):
+            eigvecs_first_k = eigvecs[:, torch.argsort(eigvals.real)[:k]].real
+            
+            labels = KMeans(n_clusters=k).fit_predict(eigvecs_first_k)
 
-            labels: np.ndarray | list[int] = KMeans(n_clusters=k).fit_predict(
-                eigvecs.real
-            )
+            
 
             label_order = []
             seen_labels = set()

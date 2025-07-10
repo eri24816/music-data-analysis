@@ -1,11 +1,13 @@
 
 from pathlib import Path
+from music_data_analysis.processors.align_sync import AlignAndSyncProcessor
 from music_data_analysis.processors.segmentation import SegmentationProcessor
 from music_data_analysis.processors.synth import SynthProcessor
 
 processor_cls_dict = {
     "segmentation": SegmentationProcessor,
     "synth": SynthProcessor,
+    "align_sync": AlignAndSyncProcessor,
 }
 
 def main():
@@ -22,6 +24,10 @@ def main():
 
     parser.add_argument("--verbose", type=bool, default=True)
     parser.add_argument("--overwrite_existing", '-o', action='store_true')
+
+    parser.add_argument("--num_shards", "--ns", type=int, default=1, help="Number of shards to use for the processing")
+    parser.add_argument("--shard_id", "--sid", type=int, default=0, help="Shard ID to use for the processing")
+
     args = parser.parse_args()
     
     # Process kwargs into a dictionary
@@ -48,6 +54,8 @@ def main():
         num_processes=args.num_processes,
         verbose=args.verbose,
         overwrite_existing=args.overwrite_existing,
+        num_shards=args.num_shards,
+        shard_id=args.shard_id,
     )
 
 if __name__ == "__main__":
