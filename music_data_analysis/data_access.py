@@ -24,13 +24,13 @@ def get_old_file_path(dataset_path: Path, song_name: str, prop_name: str) -> Pat
             song_path = ""
         ext = next(
             f.suffix
-            for f in (dataset_path / prop_name / song_path).glob("*")
+            for f in (dataset_path / prop_name / song_path).glob("**/*.*")
             if f.is_file()
         )
         return (dataset_path / prop_name / song_name).with_suffix(f"{ext}")
     except StopIteration:
         raise FileNotFoundError(
-            f"File not found for property {prop_name} of song {song_name}"
+            f"File not found for property {prop_name} of song {song_name}. Searching in {dataset_path / prop_name / song_path}"
         )
 
 
@@ -143,7 +143,7 @@ class Dataset:
         else:
             self.manifest = None
             if self.song_search_index is None:
-                self.song_search_index = "midi"
+                self.song_search_index = "synced_midi"
             self.length = len(
                 [
                     f
@@ -165,7 +165,7 @@ class Dataset:
         elif self.song_search_index is not None:
             song_search_index = self.song_search_index
         else:
-            song_search_index = "midi"
+            song_search_index = "synced_midi"
 
         if (
             self.manifest is not None
