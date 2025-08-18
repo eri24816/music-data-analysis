@@ -500,7 +500,7 @@ class Pianoroll:
     '''
 
     @staticmethod
-    def from_midi(path_or_file: Path | BytesIO | miditoolkit.midi.parser.MidiFile, name: str|None=None, beats_per_bar: int=4, frames_per_beat: int=8) -> "Pianoroll":
+    def from_midi(path_or_file: Path | BytesIO | miditoolkit.midi.parser.MidiFile, name: str|None=None, beats_per_bar: int=4, frames_per_beat: int=8, track_idx: int=0) -> "Pianoroll":
         """
         Load a pianoroll from a midi file given a path
         """
@@ -512,7 +512,7 @@ class Pianoroll:
             midi = path_or_file
 
         notes: list[Note] = []
-        miditookit_notes: Iterator[miditoolkit.Note] = itertools.chain(*[i.notes for i in midi.instruments])
+        miditookit_notes: Iterator[miditoolkit.Note] = midi.instruments[track_idx].notes
         for note in miditookit_notes:
 
             new_note = Note(

@@ -47,7 +47,7 @@ def main():
                     # Keep as string if not numeric
                     kwargs[key] = value
     print('processor kwargs:', kwargs)
-    dataset = Dataset(args.dataset_path)
+    dataset = Dataset(args.dataset_path, song_search_index=processor_cls_dict[args.processor].input_props[0])
     processor = processor_cls_dict[args.processor](**kwargs)
     dataset.apply_processor(
         processor,
