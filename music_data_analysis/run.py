@@ -138,20 +138,24 @@ def main():
     # copy all files from src_midi_dir to dataset_path/midi/
     if args.src_midi_dir:
         if args.dataset_path.exists():
-            respond = input(f"{args.dataset_path} already exists. Do you want to overwrite it? (y/n)")
-            if respond == "y":
+            respond = input(f"{args.dataset_path} already exists. What to do? o: overwrite, c: continue processing, q: quit ")
+            if respond == "o":
                 shutil.rmtree(args.dataset_path)
+
+                args.dataset_path.mkdir(parents=True, exist_ok=False)
+                
+                if args.symlink_to_src:
+                    print(f"Creating symlink to {args.src_midi_dir} at {args.dataset_path / 'midi'}")
+                    (args.dataset_path / "midi").symlink_to(args.src_midi_dir) 
+                else:
+                    print(f"Copying {args.src_midi_dir} to {args.dataset_path / 'midi'}")
+                    copytree(args.src_midi_dir, args.dataset_path / "midi")
+                
+            elif respond == "c":
+                pass
             else:
                 exit()
         
-        args.dataset_path.mkdir(parents=True, exist_ok=False)
-
-        if args.symlink_to_src:
-            print(f"Creating symlink to {args.src_midi_dir} at {args.dataset_path / 'midi'}")
-            (args.dataset_path / "midi").symlink_to(args.src_midi_dir) 
-        else:
-            print(f"Copying {args.src_midi_dir} to {args.dataset_path / 'midi'}")
-            copytree(args.src_midi_dir, args.dataset_path / "midi")
     else:
         args.dataset_path.mkdir(parents=True, exist_ok=True)
 

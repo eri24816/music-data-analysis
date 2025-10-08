@@ -3,11 +3,13 @@ from pathlib import Path
 from music_data_analysis.processors.align_sync import AlignAndSyncProcessor
 from music_data_analysis.processors.segmentation import SegmentationProcessor
 from music_data_analysis.processors.synth import SynthProcessor
+from music_data_analysis.processors.duration import DurationProcessor
 
 processor_cls_dict = {
     "segmentation": SegmentationProcessor,
     "synth": SynthProcessor,
     "align_sync": AlignAndSyncProcessor,
+    "duration": DurationProcessor,
 }
 
 def main():

@@ -41,10 +41,10 @@ def get_new_file_path(
     ext: str | None = None,
     create_dir=True,
 ) -> Path:
-    dir_path = dataset_path / prop_name
-    if create_dir:
-        dir_path.mkdir(exist_ok=True, parents=True)
     result = dataset_path / prop_name / f"{song_name}"
+
+    if create_dir:
+        result.parent.mkdir(exist_ok=True, parents=True)
     if ext is not None:
         result = result.with_suffix(f".{ext}")
     return result

@@ -512,7 +512,10 @@ class Pianoroll:
             midi = path_or_file
 
         notes: list[Note] = []
-        miditookit_notes: Iterator[miditoolkit.Note] = midi.instruments[track_idx].notes
+        if len(midi.instruments) == 0:
+            miditookit_notes = []
+        else:
+            miditookit_notes: Iterator[miditoolkit.Note] = midi.instruments[track_idx].notes
         for note in miditookit_notes:
 
             new_note = Note(

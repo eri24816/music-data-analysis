@@ -60,6 +60,7 @@ def process_task(song):
     try:
         processor.process(song)
     except Exception:
+        print(f"Error processing {song.song_name}")
         traceback.print_exc()
 
 def sigint_handler(sig, frame):
