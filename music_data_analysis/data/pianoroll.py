@@ -15,17 +15,21 @@ import json
 
 INF = 2147483647
 
-HAS_TORCH = False
-try:
-    import torch
-
-    HAS_TORCH = True
-except ImportError:
-    pass
-
+def require_torch():
+    if "torch" in globals():
+        return
+    try:
+        import torch as torch_
+        global torch
+        torch = torch_
+        torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
+    except ImportError:
+        raise ImportError(
+            "This function requires torch."
+        )
 
 def get_origin(type):
-    if hasattr(type, "__origin__"):
+    if hasattr(type, "__origin__"): 
         return type.__origin__
     return type
 
@@ -91,7 +95,7 @@ class PRMetadata:
         return PRMetadata(self.name, self.start_time, self.end_time)
 
 
-NotesType = TypeVar("NotesType", bound=Sequence[tuple[int,int,int,int|None]]|torch.Tensor)
+NotesType = TypeVar("NotesType", bound=Sequence[tuple[int,int,int,int|None]]|"torch.Tensor")
 @dataclass
 class PianorollSerialized(Generic[NotesType]):
     notes: NotesType
@@ -101,9 +105,6 @@ class PianorollSerialized(Generic[NotesType]):
     frames_per_beat: int
     duration: int
 
-
-if HAS_TORCH and hasattr(torch.serialization, 'add_safe_globals'):
-    torch.serialization.add_safe_globals([PianorollSerialized, PRMetadata])
 
 def clear_duplicate_notes(notes: list[Note]) -> list[Note]:
     # often happens when loading data with larger quantization
@@ -124,7 +125,8 @@ def clear_duplicate_notes(notes: list[Note]) -> list[Note]:
     return notes
 
 def sort_notes(notes: list[Note]) -> list[Note]:
-    return sorted(notes, key=lambda x: x.onset*1000000 + x.pitch)
+    # return sorted(notes, key=lambda x: x.onset*1000000 + x.pitch)
+    return sorted(notes, key=lambda x: x.onset*1000000 + random.randint(0, 1000))
 
 class Pianoroll:
     """
@@ -144,8 +146,7 @@ class Pianoroll:
     def __init__(self, notes: list[Note], pedal: list[int]|None=None, beats_per_bar: int=4, frames_per_beat: int=8, duration: int|None=None, metadata: PRMetadata|None=None):
         # [onset time, pitch, velocity, (offset time)]
 
-        self.notes = notes
-        self.notes = sorted(self.notes)  # ensure the event is sorted by time
+        self.notes = sort_notes(notes)  # ensure the event is sorted by time
         self.beats_per_bar = beats_per_bar
         self.frames_per_beat = frames_per_beat
         self.frames_per_bar = self.beats_per_bar * self.frames_per_beat
@@ -316,11 +317,12 @@ class Pianoroll:
         ]
         return PianorollSerialized(notes, self.pedal, self.metadata, self.beats_per_bar, self.frames_per_beat, self.duration)
 
-    def to_dict_torch(self) -> PianorollSerialized[torch.Tensor]:
+    def to_dict_torch(self) -> "PianorollSerialized[torch.Tensor]":
         '''
         For torch.save
         '''
-        # make notes compact with torch.Tensor [num_notes, 4]
+        # make notes compact with torch.Tensor [num_notes, 4
+        require_torch()
         neg_one_if_none = lambda x: -1 if x is None else x
         notes = torch.tensor(
             [[note.onset, note.pitch, note.velocity, neg_one_if_none(note.offset)] for note in self.notes],
@@ -333,6 +335,7 @@ class Pianoroll:
         if format == "json":
             json_dump(self.to_dict(), path)
         elif format == "torch":
+            require_torch()
             torch.save(self.to_dict_torch(), path)
         else:
             raise ValueError(f"Invalid format: {format}")
@@ -378,6 +381,7 @@ class Pianoroll:
         """
         Load a pianoroll from a torch file
         """
+        require_torch()
         serialized = torch.load(path)
         # convert serialized.notes to list[Note]
         notes = []
@@ -426,10 +430,7 @@ class Pianoroll:
         """
         Convert a tensor to a pianoroll
         """
-        if not HAS_TORCH:
-            raise ImportError(
-                "Pianoroll.from_tensor requires torch. Please install torch."
-            )
+        require_torch()
         if normalized and not binary:
             tens = (tens + 1) * 64
         elif binary:
@@ -457,11 +458,7 @@ class Pianoroll:
         """
         Convert the pianoroll to a tensor
         """
-        if not HAS_TORCH:
-            raise RuntimeError(
-                "Pianoroll.to_tensor requires torch. Please install torch."
-            )
-
+        require_torch()
         n_features = 88 if not chromagram else 12
 
         if padding:
@@ -517,7 +514,6 @@ class Pianoroll:
         else:
             miditookit_notes: Iterator[miditoolkit.Note] = midi.instruments[track_idx].notes
         for note in miditookit_notes:
-
             new_note = Note(
                 int(round(note.start * frames_per_beat / midi.ticks_per_beat)),
                 note.pitch,
@@ -737,6 +733,7 @@ class Pianoroll:
         """
         Convert the pianoroll to a image tensor
         """
+        require_torch()
         img = torch.zeros((88, self.duration))
         if plot_sustain:
             for time, pitch, vel, offset in self.iter_over_notes_unpack():
